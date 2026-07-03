@@ -1,5 +1,6 @@
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d', { alpha: false });
+ctx.imageSmoothingEnabled = false; // Importante para el arte pixelado
 const screenWidth = canvas.width;
 const screenHeight = canvas.height;
 const fpsElement = document.getElementById('fps');
@@ -35,6 +36,37 @@ const worldMap = [
   [2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,5,5,5,5,5,5,5,5,5]
 ];
 
+// Arreglo de configuración de sprites en el mapa
+const sprites = [
+    {x: 20.5, y: 11.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0}, // luz verde frente al jugador
+    // luces verdes en cada habitación
+    {x: 18.5, y: 4.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 10.0, y: 4.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 10.0, y: 12.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 3.5,  y: 6.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 3.5,  y: 20.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 3.5,  y: 14.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 14.5, y: 20.5, texture: 10, uDiv: 1, vDiv: 1, vMove: 0.0},
+
+    // fila de pilares (prueba de ojo de pez)
+    {x: 18.5, y: 10.5, texture: 9, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 18.5, y: 11.5, texture: 9, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 18.5, y: 12.5, texture: 9, uDiv: 1, vDiv: 1, vMove: 0.0},
+
+    // algunos barriles repartidos
+    {x: 21.5, y: 1.5, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 15.5, y: 1.5, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 16.0, y: 1.8, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 16.2, y: 1.2, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 3.5,  y: 2.5, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 9.5,  y: 15.5, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 10.0, y: 15.1, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+    {x: 10.5, y: 15.8, texture: 8, uDiv: 1, vDiv: 1, vMove: 0.0},
+];
+
+// ZBuffer 1D: Guarda la distancia del muro en cada columna X para comprobar oclusión
+const ZBuffer = new Float64Array(screenWidth);
+
 let posX = 22.0, posY = 11.5;  // Posición inicial X e Y
 let dirX = -1.0, dirY = 0.0;   // Vector de dirección inicial
 let planeX = 0.0, planeY = 0.66; // La versión de plano de cámara del raycaster 2D
@@ -61,16 +93,19 @@ document.addEventListener('keyup', (e) => {
     if(keys.hasOwnProperty(e.key)) keys[e.key] = false;
 });
 
-// Precargar texturas
+// Precargar texturas (11 texturas ahora, incluye Sprites)
 const texturePaths = [
-    'textures/eagle.png',      // índice 0, mapa = 1
-    'textures/redbrick.png',   // índice 1, mapa = 2
-    'textures/purplestone.png',// índice 2, mapa = 3
-    'textures/greystone.png',  // índice 3, mapa = 4
-    'textures/bluestone.png',  // índice 4, mapa = 5
-    'textures/mossy.png',      // índice 5, mapa = 6
-    'textures/wood.png',       // índice 6, mapa = 7
-    'textures/colorstone.png'  // índice 7, mapa = 8
+    'textures/eagle.png',      // 0
+    'textures/redbrick.png',   // 1
+    'textures/purplestone.png',// 2
+    'textures/greystone.png',  // 3
+    'textures/bluestone.png',  // 4
+    'textures/mossy.png',      // 5
+    'textures/wood.png',       // 6
+    'textures/colorstone.png', // 7
+    'textures/barrel.png',     // 8
+    'textures/pillar.png',     // 9
+    'textures/greenlight.png'  // 10
 ];
 
 const textures = [];
@@ -87,10 +122,34 @@ texturePaths.forEach((path, i) => {
         tempCanvas.height = 64;
         const tempCtx = tempCanvas.getContext('2d');
         tempCtx.drawImage(img, 0, 0);
-        const imgData = tempCtx.getImageData(0, 0, 64, 64).data;
         
+        const imgDataObj = tempCtx.getImageData(0, 0, 64, 64);
+        const imgData = imgDataObj.data;
+        
+        // Asumimos que el píxel superior izquierdo (0,0) es el color de fondo
+        const bgR = imgData[0];
+        const bgG = imgData[1];
+        const bgB = imgData[2];
+        const bgA = imgData[3];
+        
+        // TRUCO DE OPTIMIZACIÓN WEB: Procesar las transparencias de los Sprites
+        // IMPORTANTE: Solo aplicar a texturas de sprites (índices 8, 9 y 10).
+        // Usamos una tolerancia (< 15) en lugar del color exacto porque los navegadores 
+        // pueden alterar los colores puros por perfiles de color, creando un "ruido" de puntos negros.
+        if (i >= 8) { 
+            for (let j = 0; j < imgData.length; j += 4) {
+                // Si el color es "negro" o casi negro (ruido de fondo)
+                if (imgData[j] < 15 && imgData[j+1] < 15 && imgData[j+2] < 15) {
+                    imgData[j+3] = 0; // Lo volvemos completamente transparente
+                }
+            }
+        }
+        
+        // Regresamos la imagen alterada con las transparencias a un Canvas que guardaremos como nuestra textura fuente
+        tempCtx.putImageData(imgDataObj, 0, 0);
+
         textures[i] = {
-            img: img,         
+            img: tempCanvas,  // Esta imagen ya procesó el fondo invisible
             data: imgData,    
             width: 64,
             height: 64
@@ -222,6 +281,11 @@ function gameLoop(timestamp) {
             drawEnd: drawEnd
         });
 
+        // ==========================================
+        //  NUEVO: ACTUALIZAR ZBUFFER PARA SPRITES
+        // ==========================================
+        ZBuffer[x] = perpWallDist;
+
         // --- FLOOR CASTING (VERSIÓN VERTICAL) ---
         // Justo después de procesar la pared, calculamos todos los píxeles hacia abajo.
         let floorXWall, floorYWall;
@@ -303,6 +367,81 @@ function gameLoop(timestamp) {
         }
     }
 
+    // ==========================================
+    //  SPRITE CASTING
+    // ==========================================
+
+    // 1. Calcular distancia al cuadrado para cada sprite para ordenarlos
+    for (let i = 0; i < sprites.length; i++) {
+        const dx = posX - sprites[i].x;
+        const dy = posY - sprites[i].y;
+        sprites[i].distance = dx * dx + dy * dy;
+    }
+
+    // 2. Ordenar de lejano a cercano (Painter's Algorithm)
+    sprites.sort((a, b) => b.distance - a.distance);
+
+    // 3. Proyectar y renderizar cada sprite
+    for (let i = 0; i < sprites.length; i++) {
+        const sprite = sprites[i];
+        
+        // Coordenadas relativas a la cámara
+        const spriteX = sprite.x - posX;
+        const spriteY = sprite.y - posY;
+
+        // Inversión de la matriz de la cámara 2x2
+        const invDet = 1.0 / (planeX * dirY - dirX * planeY);
+        const transformX = invDet * (dirY * spriteX - dirX * spriteY);
+        const transformY = invDet * (-planeY * spriteX + planeX * spriteY);
+
+        // Si el sprite está detrás de la cámara, ignorarlo
+        if (transformY <= 0) continue;
+
+        const spriteScreenX = Math.floor((screenWidth / 2) * (1 + transformX / transformY));
+
+        const vMoveScreen = Math.floor(sprite.vMove / transformY);
+
+        // Altura del sprite en pantalla
+        const spriteHeight = Math.floor(Math.abs(screenHeight / transformY) / sprite.vDiv);
+        if (spriteHeight <= 0) continue;
+        const drawStartY = Math.floor(-spriteHeight / 2 + screenHeight / 2) + vMoveScreen;
+
+        // Ancho del sprite en pantalla
+        const spriteWidth = Math.floor(Math.abs(screenHeight / transformY) / sprite.uDiv);
+        if (spriteWidth <= 0) continue;
+        const drawStartX = Math.floor(-spriteWidth / 2 + spriteScreenX);
+        const drawEndX = Math.floor(spriteWidth / 2 + spriteScreenX);
+
+        // Recortar los límites en el eje X para el ciclo de renderizado
+        let clipStartX = drawStartX;
+        let clipEndX = drawEndX - 1; // -1 porque la franja final llega hasta aquí
+        if (clipStartX < 0) clipStartX = 0;
+        if (clipEndX >= screenWidth) clipEndX = screenWidth - 1;
+
+        const texObj = textures[sprite.texture];
+
+        // Efecto Translucidez (para textura 10, luz verde)
+        const isTranslucent = (sprite.texture === 10);
+        if (isTranslucent) ctx.globalAlpha = 0.5;
+
+        // Dibujar el sprite verticalmente, franja por franja, verificando oclusión (ZBuffer)
+        for (let stripe = clipStartX; stripe <= clipEndX; stripe++) {
+            // Un pixel ancho, comprobamos el ZBuffer
+            if (transformY < ZBuffer[stripe]) {
+                const texX = Math.floor(256 * (stripe - (-spriteWidth / 2 + spriteScreenX)) * texObj.width / spriteWidth) / 256;
+                const safeTexX = Math.floor(texX);
+                
+                // Extraemos una línea vertical de la imagen transparente almacenada en tempCanvas y la dibujamos escalada
+                if (safeTexX >= 0 && safeTexX < texObj.width) {
+                    ctx.drawImage(texObj.img, safeTexX, 0, 1, texObj.height, stripe, drawStartY, 1, spriteHeight);
+                }
+            }
+        }
+        
+        // Restaurar transparencia
+        if (isTranslucent) ctx.globalAlpha = 1.0;
+    }
+
     // Modificadores de velocidad basados en fotogramas
     const moveSpeed = frameTime * 5.0; 
     const rotSpeed = frameTime * 3.0; 
@@ -333,5 +472,62 @@ function gameLoop(timestamp) {
         planeY = oldPlaneX * Math.sin(rotSpeed) + planeY * Math.cos(rotSpeed);
     }
 
+    // ==========================================
+    //  MINIMAPA
+    // ==========================================
+    drawMinimap();
+
     requestAnimationFrame(gameLoop);
 }
+
+function drawMinimap() {
+    const cellSize = 6; // Tamaño de cada bloque en el mapa
+    const mapWidthPx = mapWidth * cellSize;
+    const mapHeightPx = mapHeight * cellSize;
+    const offsetX = screenWidth - mapWidthPx - 10; // Esquina superior derecha
+    const offsetY = 10;
+
+    // Fondo del minimapa (semitransparente)
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(offsetX, offsetY, mapWidthPx, mapHeightPx);
+    ctx.globalAlpha = 1.0;
+
+    // Dibujar Muros
+    for (let x = 0; x < mapWidth; x++) {
+        for (let y = 0; y < mapHeight; y++) {
+            if (worldMap[x][y] > 0) {
+                ctx.fillStyle = "#888888"; // Muro sólido gris
+                ctx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
+            }
+        }
+    }
+
+    // Dibujar Sprites
+    for (let i = 0; i < sprites.length; i++) {
+        const sprite = sprites[i];
+        if (sprite.texture === 10) ctx.fillStyle = "#00FF00"; // Lámpara verde
+        else if (sprite.texture === 8) ctx.fillStyle = "#8B4513"; // Barril (marrón)
+        else ctx.fillStyle = "#0000FF"; // Otro (pilar azul)
+
+        // Dibujar un pequeño cuadrado de 2x2 para cada sprite centrado en su coordenada
+        ctx.fillRect(offsetX + sprite.x * cellSize - 1, offsetY + sprite.y * cellSize - 1, 2, 2);
+    }
+
+    // Dibujar Jugador
+    ctx.fillStyle = "#FF0000"; // Punto rojo
+    const playerPxX = offsetX + posX * cellSize;
+    const playerPxY = offsetY + posY * cellSize;
+    ctx.beginPath();
+    ctx.arc(playerPxX, playerPxY, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dibujar línea de dirección
+    ctx.strokeStyle = "#FFFF00"; // Línea amarilla
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(playerPxX, playerPxY);
+    ctx.lineTo(playerPxX + dirX * 10, playerPxY + dirY * 10);
+    ctx.stroke();
+}
+
