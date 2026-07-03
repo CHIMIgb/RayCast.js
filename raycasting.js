@@ -9,30 +9,30 @@ const mapHeight = 24;
 
 // Mapa texturizado del tutorial de LodeV
 const worldMap = [
-  [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,7,7,7,7,7,7,7,7],
-  [4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,0,0,0,0,0,0,7],
-  [4,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7],
-  [4,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7],
-  [4,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,7,0,0,0,0,0,0,7],
-  [4,0,4,0,0,0,0,5,5,5,5,5,5,5,5,5,7,7,0,7,7,7,7,7],
-  [4,0,5,0,0,0,0,5,0,5,0,5,0,5,0,5,7,0,0,0,7,7,7,1],
-  [4,0,6,0,0,0,0,5,0,0,0,0,0,0,0,5,7,0,0,0,0,0,0,8],
-  [4,0,7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,7,7,1],
-  [4,0,8,0,0,0,0,5,0,0,0,0,0,0,0,5,7,0,0,0,0,0,0,8],
-  [4,0,0,0,0,0,0,5,0,0,0,0,0,0,0,5,7,0,0,0,7,7,7,1],
-  [4,0,0,0,0,0,0,5,5,5,5,0,5,5,5,5,7,7,7,7,7,7,7,1],
-  [6,6,6,6,6,6,6,6,6,6,6,0,6,6,6,6,6,6,6,6,6,6,6,6],
-  [8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4],
-  [6,6,6,6,6,6,0,6,6,6,6,0,6,6,6,6,6,6,6,6,6,6,6,6],
-  [4,4,4,4,4,4,0,4,4,4,6,0,6,2,2,2,2,2,2,2,3,3,3,3],
-  [4,0,0,0,0,0,0,0,0,4,6,0,6,2,0,0,0,0,0,2,0,0,0,2],
-  [4,0,0,0,0,0,0,0,0,0,0,0,6,2,0,0,5,0,0,2,0,0,0,2],
-  [4,0,0,0,0,0,0,0,0,4,6,0,6,2,0,0,0,0,0,2,2,0,2,2],
-  [4,0,6,0,6,0,0,0,0,4,6,0,0,0,0,0,5,0,0,0,0,0,0,2],
-  [4,0,0,5,0,0,0,0,0,4,6,0,6,2,0,0,0,0,0,2,2,0,2,2],
-  [4,0,6,0,6,0,0,0,0,4,6,0,6,2,0,0,5,0,0,2,0,0,0,2],
-  [4,0,0,0,0,0,0,0,0,4,6,0,6,2,0,0,0,0,0,2,0,0,0,2],
-  [4,4,4,4,4,4,4,4,4,4,1,1,1,2,2,2,2,2,2,3,3,3,3,3]
+  [8,8,8,8,8,8,8,8,8,8,8,4,4,6,4,4,6,4,6,4,4,4,6,4],
+  [8,0,0,0,0,0,0,0,0,0,8,4,0,0,0,0,0,0,0,0,0,0,0,4],
+  [8,0,3,3,0,0,0,0,0,8,8,4,0,0,0,0,0,0,0,0,0,0,0,6],
+  [8,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6],
+  [8,0,3,3,0,0,0,0,0,8,8,4,0,0,0,0,0,0,0,0,0,0,0,4],
+  [8,0,0,0,0,0,0,0,0,0,8,4,0,0,0,0,0,6,6,6,0,6,4,6],
+  [8,8,8,8,0,8,8,8,8,8,8,4,4,4,4,4,4,6,0,0,0,0,0,6],
+  [7,7,7,7,0,7,7,7,7,0,8,0,8,0,8,0,8,4,0,4,0,6,0,6],
+  [7,7,0,0,0,0,0,0,7,8,0,8,0,8,0,8,8,6,0,0,0,0,0,6],
+  [7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8,6,0,0,0,0,0,4],
+  [7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8,6,0,6,0,6,0,6],
+  [7,7,0,0,0,0,0,0,7,8,0,8,0,8,0,8,8,6,4,6,0,6,6,6],
+  [7,7,7,7,0,7,7,7,7,8,8,4,0,6,8,4,8,3,3,3,0,3,3,3],
+  [2,2,2,2,0,2,2,2,2,4,6,4,0,0,6,0,6,3,0,0,0,0,0,3],
+  [2,2,0,0,0,0,0,2,2,4,0,0,0,0,0,0,4,3,0,0,0,0,0,3],
+  [2,0,0,0,0,0,0,0,2,4,0,0,0,0,0,0,4,3,0,0,0,0,0,3],
+  [1,0,0,0,0,0,0,0,1,4,4,4,4,4,6,0,6,3,3,0,0,0,3,3],
+  [2,0,0,0,0,0,0,0,2,2,2,1,2,2,2,6,6,0,0,5,0,5,0,5],
+  [2,2,0,0,0,0,0,2,2,2,0,0,0,2,2,0,5,0,5,0,0,0,5,5],
+  [2,0,0,0,0,0,0,0,2,0,0,0,0,0,2,5,0,5,0,5,0,5,0,5],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5],
+  [2,0,0,0,0,0,0,0,2,0,0,0,0,0,2,5,0,5,0,5,0,5,0,5],
+  [2,2,0,0,0,0,0,2,2,2,0,0,0,2,2,0,5,0,5,0,0,0,5,5],
+  [2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,5,5,5,5,5,5,5,5,5]
 ];
 
 let posX = 22.0, posY = 11.5;  // Posición inicial X e Y
@@ -69,7 +69,7 @@ const texturePaths = [
     'textures/greystone.png',  // índice 3, mapa = 4
     'textures/bluestone.png',  // índice 4, mapa = 5
     'textures/mossy.png',      // índice 5, mapa = 6
-    'textures/madera.png',     // índice 6, mapa = 7
+    'textures/wood.png',       // índice 6, mapa = 7
     'textures/colorstone.png'  // índice 7, mapa = 8
 ];
 
@@ -79,7 +79,23 @@ let loadedCount = 0;
 texturePaths.forEach((path, i) => {
     const img = new Image();
     img.src = path;
+    img.onerror = () => { console.error("Error al cargar la textura:", path); };
     img.onload = () => {
+        // Extraer los datos de los píxeles (ImageData)
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 64; 
+        tempCanvas.height = 64;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(img, 0, 0);
+        const imgData = tempCtx.getImageData(0, 0, 64, 64).data;
+        
+        textures[i] = {
+            img: img,         
+            data: imgData,    
+            width: 64,
+            height: 64
+        };
+
         loadedCount++;
         if (loadedCount === texturePaths.length) {
             // Todas las texturas cargadas, iniciar el bucle principal
@@ -89,54 +105,58 @@ texturePaths.forEach((path, i) => {
             });
         }
     };
-    textures[i] = img;
 });
 
+// Buffer de píxeles reutilizable para dibujar piso y techo velozmente
+const floorImgData = ctx.createImageData(screenWidth, screenHeight);
+const buf = floorImgData.data;
+
 function gameLoop(timestamp) {
-    // Calcular el tiempo del fotograma (timing)
     time = timestamp;
-    const frameTime = (time - oldTime) / 1000.0; // frameTime es el tiempo que tomó este fotograma, en segundos
+    const frameTime = (time - oldTime) / 1000.0;
     
-    // Solo actualizar FPS si frameTime es mayor que cero para evitar divisiones por cero
     if (frameTime > 0) {
         fpsElement.textContent = `FPS: ${Math.round(1.0 / frameTime)}`;
     }
     oldTime = time;
 
-    // Dibujar Techo
+    // Dibujar fondos por defecto para evitar espacios vacíos por redondeos
     ctx.fillStyle = "#333333";
     ctx.fillRect(0, 0, screenWidth, screenHeight / 2);
-    // Dibujar Suelo
     ctx.fillStyle = "#555555";
     ctx.fillRect(0, screenHeight / 2, screenWidth, screenHeight / 2);
 
+    // Limpiar el buffer de píxeles a transparente para que el ctx.drawImage de los muros 
+    // se pueda pintar sobre él sin problemas.
+    buf.fill(0); 
+
+    const wallsToDraw = [];
+
+    // --- CÁLCULO DE MUROS Y PISO/TECHO (VERTICAL VERSION) ---
+    // En la versión vertical, el suelo y el techo se calculan inmediatamente 
+    // después de calcular la línea de la pared, en el mismo bucle x.
     for (let x = 0; x < screenWidth; x++) {
         // Calcular posición y dirección del rayo
-        const cameraX = 2 * x / screenWidth - 1; // Coordenada X en el espacio de la cámara
+        const cameraX = 2 * x / screenWidth - 1;
         const rayDirX = dirX + planeX * cameraX;
         const rayDirY = dirY + planeY * cameraX;
 
-        // En qué cuadro del mapa nos encontramos
         let mapX = Math.floor(posX);
         let mapY = Math.floor(posY);
 
-        // Longitud del rayo desde la posición actual hasta el siguiente lado X o Y
         let sideDistX;
         let sideDistY;
 
-        // Longitud del rayo de un lado X/Y al siguiente lado X/Y
         const deltaDistX = (rayDirX === 0) ? 1e30 : Math.abs(1 / rayDirX);
         const deltaDistY = (rayDirY === 0) ? 1e30 : Math.abs(1 / rayDirY);
         let perpWallDist;
 
-        // Dirección en la que avanzar en X o Y (ya sea +1 o -1)
         let stepX;
         let stepY;
 
-        let hit = 0; // ¿Hubo colisión con un muro?
-        let side; // ¿Fue un muro Norte/Sur o Este/Oeste?
+        let hit = 0;
+        let side;
 
-        // Calcular el paso (step) y el sideDist inicial
         if (rayDirX < 0) {
             stepX = -1;
             sideDistX = (posX - mapX) * deltaDistX;
@@ -152,9 +172,7 @@ function gameLoop(timestamp) {
             sideDistY = (mapY + 1.0 - posY) * deltaDistY;
         }
 
-        // Ejecutar el DDA
         while (hit === 0) {
-            // Saltar al siguiente cuadrado del mapa, ya sea en dirección X o en dirección Y
             if (sideDistX < sideDistY) {
                 sideDistX += deltaDistX;
                 mapX += stepX;
@@ -164,78 +182,141 @@ function gameLoop(timestamp) {
                 mapY += stepY;
                 side = 1;
             }
-            // Comprobar si el rayo ha golpeado un muro
             if (worldMap[mapX][mapY] > 0) hit = 1;
         }
 
-        // Calcular la distancia proyectada en la dirección de la cámara (¡la Euclidiana daría efecto ojo de pez!)
         if (side === 0) perpWallDist = (sideDistX - deltaDistX);
         else          perpWallDist = (sideDistY - deltaDistY);
 
-        // Calcular la altura de la línea a dibujar en la pantalla
         let lineHeight = Math.floor(screenHeight / perpWallDist);
 
-        // Calcular el píxel más bajo y más alto para rellenar en la franja actual
-        // Usamos drawStartOrig sin limitar para que drawImage escale correctamente la textura completa
         let drawStartOrig = Math.floor(-lineHeight / 2 + screenHeight / 2);
+        let drawStart = drawStartOrig;
+        if (drawStart < 0) drawStart = 0;
+        let drawEnd = Math.floor(lineHeight / 2 + screenHeight / 2);
+        if (drawEnd >= screenHeight) drawEnd = screenHeight - 1;
 
-        // --- CÁLCULOS DE TEXTURA ---
-        let texNum = worldMap[mapX][mapY] - 1; // -1 porque las texturas en el mapa son de 1 a 8
-        const texImg = textures[texNum];
-        const texWidth = texImg.width;
-        const texHeight = texImg.height;
+        let texNum = worldMap[mapX][mapY] - 1;
+        const texObj = textures[texNum];
 
-        // Calcular el valor de wallX (donde exactamente choca el rayo en la pared)
         let wallX;
         if (side === 0) wallX = posY + perpWallDist * rayDirY;
         else          wallX = posX + perpWallDist * rayDirX;
         wallX -= Math.floor(wallX);
 
-        // Coordenada X dentro de la textura
-        let texX = Math.floor(wallX * texWidth);
-        if (side === 0 && rayDirX > 0) texX = texWidth - texX - 1;
-        if (side === 1 && rayDirY < 0) texX = texWidth - texX - 1;
-        
-        // Evitar desbordamientos
-        texX = Math.max(0, Math.min(texX, texWidth - 1));
+        let texX = Math.floor(wallX * texObj.width);
+        if (side === 0 && rayDirX > 0) texX = texObj.width - texX - 1;
+        if (side === 1 && rayDirY < 0) texX = texObj.width - texX - 1;
+        texX = Math.max(0, Math.min(texX, texObj.width - 1));
 
-        // Dibujamos usando la función nativa drawImage de Canvas, la cual es extremadamente rápida
-        // y nos evita tener que hacer el costoso "putImageData" píxel por píxel como en C++.
-        // Copia una porción vertical de 1 píxel de ancho (texX) y la estira a todo "lineHeight"
-        if (lineHeight > 0) {
-            ctx.drawImage(texImg, texX, 0, 1, texHeight, x, drawStartOrig, 1, lineHeight);
+        // Guardar los datos del muro para dibujarlos con el hardware más tarde
+        wallsToDraw.push({
+            img: texObj.img,
+            texX: texX,
+            texHeight: texObj.height,
+            drawStartOrig: drawStartOrig,
+            lineHeight: lineHeight,
+            x: x,
+            side: side,
+            drawStart: drawStart,
+            drawEnd: drawEnd
+        });
+
+        // --- FLOOR CASTING (VERSIÓN VERTICAL) ---
+        // Justo después de procesar la pared, calculamos todos los píxeles hacia abajo.
+        let floorXWall, floorYWall;
+
+        if (side === 0 && rayDirX > 0) {
+            floorXWall = mapX;
+            floorYWall = mapY + wallX;
+        } else if (side === 0 && rayDirX < 0) {
+            floorXWall = mapX + 1.0;
+            floorYWall = mapY + wallX;
+        } else if (side === 1 && rayDirY > 0) {
+            floorXWall = mapX + wallX;
+            floorYWall = mapY;
+        } else {
+            floorXWall = mapX + wallX;
+            floorYWall = mapY + 1.0;
         }
 
-        // Dar un brillo (oscuridad) diferente a los lados X e Y de la pared
-        if (side === 1) {
-            // Limitamos drawStart y drawEnd para pintar la sombra solo en el área visible de la pantalla
-            let drawStart = drawStartOrig;
-            if (drawStart < 0) drawStart = 0;
-            let drawEnd = Math.floor(lineHeight / 2 + screenHeight / 2);
-            if (drawEnd >= screenHeight) drawEnd = screenHeight - 1;
+        let distWall = perpWallDist;
+        let distPlayer = 0.0;
 
-            ctx.fillStyle = "rgba(0, 0, 0, 0.5)"; // Sombra negra al 50%
-            ctx.fillRect(x, drawStart, 1, drawEnd - drawStart + 1);
+        if (drawEnd < 0) drawEnd = screenHeight; 
+
+        // Dibujar el piso desde la base de la pared hasta abajo
+        for (let y = drawEnd + 1; y < screenHeight; y++) {
+            let currentDist = screenHeight / (2.0 * y - screenHeight);
+            
+            let weight = (currentDist - distPlayer) / (distWall - distPlayer);
+
+            let currentFloorX = weight * floorXWall + (1.0 - weight) * posX;
+            let currentFloorY = weight * floorYWall + (1.0 - weight) * posY;
+
+            // TRUCO ESPECIAL (SPECIAL TRICKS): 
+            // Para hacer que las texturas sean 4 veces más grandes, dividimos entre 4
+            let floorTexX = Math.floor(currentFloorX * texObj.width / 4) & (texObj.width - 1);
+            let floorTexY = Math.floor(currentFloorY * texObj.height / 4) & (texObj.height - 1);
+
+            // Patrón de ajedrez usando las coordenadas reales
+            let checkerBoardPattern = (Math.floor(currentFloorX) + Math.floor(currentFloorY)) & 1;
+            let floorTexIdx = (checkerBoardPattern === 0) ? 3 : 4; // 3=greystone, 4=bluestone
+            let ceilingTexIdx = 6; // 6=madera
+
+            const fData = textures[floorTexIdx].data;
+            const cData = textures[ceilingTexIdx].data;
+
+            const texPos = (floorTexY * texObj.width + floorTexX) * 4;
+
+            // -- PÍXEL DEL PISO --
+            const floorBufPos = ((y * screenWidth) + x) * 4;
+            buf[floorBufPos]     = fData[texPos] >> 1;     // Oscurecido
+            buf[floorBufPos + 1] = fData[texPos + 1] >> 1;
+            buf[floorBufPos + 2] = fData[texPos + 2] >> 1;
+            buf[floorBufPos + 3] = 255;                    // Opaco
+
+            // -- PÍXEL DEL TECHO (Simétrico) --
+            const ceilY = screenHeight - y - 1;
+            if (ceilY >= 0) {
+                const ceilBufPos = ((ceilY * screenWidth) + x) * 4;
+                buf[ceilBufPos]     = cData[texPos] >> 1;     // Oscurecido
+                buf[ceilBufPos + 1] = cData[texPos + 1] >> 1;
+                buf[ceilBufPos + 2] = cData[texPos + 2] >> 1;
+                buf[ceilBufPos + 3] = 255;                    // Opaco
+            }
+        }
+    }
+
+    // Volcar todos los píxeles calculados a mano en el Canvas principal
+    ctx.putImageData(floorImgData, 0, 0);
+
+    // Dibujar las paredes (optimizadas con drawImage) por encima del fondo transparente/piso
+    for (let i = 0; i < wallsToDraw.length; i++) {
+        const w = wallsToDraw[i];
+        if (w.lineHeight > 0) {
+            ctx.drawImage(w.img, w.texX, 0, 1, w.texHeight, w.x, w.drawStartOrig, 1, w.lineHeight);
+        }
+        if (w.side === 1) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+            ctx.fillRect(w.x, w.drawStart, 1, w.drawEnd - w.drawStart + 1);
         }
     }
 
     // Modificadores de velocidad basados en fotogramas
-    const moveSpeed = frameTime * 5.0; // el valor constante equivale a cuadrados/segundo
-    const rotSpeed = frameTime * 3.0; // el valor constante equivale a radianes/segundo
+    const moveSpeed = frameTime * 5.0; 
+    const rotSpeed = frameTime * 3.0; 
 
-    // Moverse hacia adelante si no hay pared enfrente
+    // Movimiento
     if (keys.ArrowUp || keys.w) {
         if (worldMap[Math.floor(posX + dirX * moveSpeed)][Math.floor(posY)] === 0) posX += dirX * moveSpeed;
         if (worldMap[Math.floor(posX)][Math.floor(posY + dirY * moveSpeed)] === 0) posY += dirY * moveSpeed;
     }
-    // Moverse hacia atrás si no hay pared detrás
     if (keys.ArrowDown || keys.s) {
         if (worldMap[Math.floor(posX - dirX * moveSpeed)][Math.floor(posY)] === 0) posX -= dirX * moveSpeed;
         if (worldMap[Math.floor(posX)][Math.floor(posY - dirY * moveSpeed)] === 0) posY -= dirY * moveSpeed;
     }
-    // Rotar a la derecha
     if (keys.ArrowRight || keys.d) {
-        // tanto la dirección de la cámara como el plano de cámara deben ser rotados
         const oldDirX = dirX;
         dirX = dirX * Math.cos(-rotSpeed) - dirY * Math.sin(-rotSpeed);
         dirY = oldDirX * Math.sin(-rotSpeed) + dirY * Math.cos(-rotSpeed);
@@ -243,9 +324,7 @@ function gameLoop(timestamp) {
         planeX = planeX * Math.cos(-rotSpeed) - planeY * Math.sin(-rotSpeed);
         planeY = oldPlaneX * Math.sin(-rotSpeed) + planeY * Math.cos(-rotSpeed);
     }
-    // Rotar a la izquierda
     if (keys.ArrowLeft || keys.a) {
-        // tanto la dirección de la cámara como el plano de cámara deben ser rotados
         const oldDirX = dirX;
         dirX = dirX * Math.cos(rotSpeed) - dirY * Math.sin(rotSpeed);
         dirY = oldDirX * Math.sin(rotSpeed) + dirY * Math.cos(rotSpeed);
