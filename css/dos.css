@@ -1,0 +1,212 @@
+/* ============================================================
+   dos.css — Terminal MS-DOS, boot screen y efectos CRT
+   ------------------------------------------------------------
+   • Terminal (prompt de comandos)
+   • Pantalla de apagado
+   • FASE 3: boot BIOS/DOS, scanlines, curvatura CRT
+   ============================================================ */
+
+/* ---------- Terminal ---------- */
+.terminal {
+  height: 100%;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: #000;
+  color: #c8c8c8;
+  font-family: var(--font-dos);
+  font-size: 16px;                 /* altura nativa del glifo VGA */
+  line-height: 17px;
+  cursor: text;
+}
+
+.terminal-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-line.green { color: #00ff00; }
+.terminal-line.amber { color: #ffb000; }
+
+.terminal-input-row { display: flex; }
+
+.terminal-prompt { white-space: pre; }
+
+.terminal-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+}
+
+/* ---------- Pantalla de apagado ---------- */
+.shutdown-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #000;
+  color: #ffb000;
+  font-family: var(--font-dos);
+  font-size: 22px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.shutdown-screen small {
+  font-size: 14px;
+  color: #666;
+}
+
+/* ---------- Secuencia de arranque (BIOS/DOS) ---------- */
+.boot-screen {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding: 14px 18px;
+  background: #000;
+  color: #b8b8b8;
+  font-family: var(--font-dos);
+  font-size: 16px;
+  line-height: 17px;
+}
+
+.bios-line {
+  white-space: pre-wrap;
+}
+
+.bios-line.head { color: #fff; }
+.bios-line.ok::after { content: ''; }
+.bios-line.ok { color: #9adf9a; }
+
+.cursor-blink .typed::after,
+.boot-screen.typing .cursor-blink::after {
+  content: '█';
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Splash */
+.splash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(120% 120% at 50% 40%, #001048 0%, #000010 55%, #000 100%);
+}
+
+.splash-box {
+  text-align: center;
+  color: #fff;
+  font-family: var(--font-ui);
+  animation: splash-in .45s ease-out;
+}
+
+@keyframes splash-in {
+  from { transform: scale(.92); opacity: 0; }
+}
+
+.splash-title {
+  margin-top: 14px;
+  font-size: 46px;
+  font-weight: bold;
+  letter-spacing: -1px;
+}
+
+.splash-title .ninefive { color: #ffb000; }
+
+.splash-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #8aa2c8;
+}
+
+.splash-foot-left,
+.splash-foot-right {
+  position: absolute;
+  bottom: 12px;
+  font-family: var(--font-dos);
+  font-size: 14px;
+  color: #555;
+}
+
+.splash-foot-left { left: 16px; }
+.splash-foot-right { right: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-box { animation: none; }
+}
+
+/* ---------- Overlay CRT global ---------- */
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999998;                 /* bajo el apagado, sobre todo lo demás */
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg,
+      rgba(0, 0, 0, .17) 0 1px,
+      transparent 1px 3px);
+}
+
+.crt-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(115% 115% at 50% 50%, transparent 62%, rgba(0, 0, 0, .28) 100%);
+}
+
+.crt-overlay[hidden] { display: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .crt-overlay { animation: crt-flicker 4.5s infinite steps(60); }
+
+  @keyframes crt-flicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .93; }
+  }
+}
+
+/* ---------- Transición power-off entre vistas ---------- */
+.crt-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 999997;                  /* bajo el apagado, sobre CRT overlay */
+  background: #000;
+  pointer-events: none;
+  transform: scaleY(0);
+  animation: crt-collapse .22s ease-in forwards;
+}
+
+.crt-transition.mid::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% - 1px);
+  height: 2px;
+  background: #e8ffff;
+  box-shadow: 0 0 26px 8px rgba(170, 235, 255, .85);
+}
+
+.crt-transition.out {
+  animation: crt-expand .32s ease-out forwards;
+}
+
+@keyframes crt-collapse {
+  to { transform: scaleY(1); }
+}
+
+@keyframes crt-expand {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0); }
+}
