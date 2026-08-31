@@ -160,10 +160,10 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 | 6.15 | Tipografías DOS / Font Manager | 🆕 | F3 |
 | 6.16 | Pantallas de carga / Loading Editor | 🆕 | F3 |
 | 6.17 | Bloques predefinidos reutilizables (catálogo) | 🆕 | F4 (catálogo base) · F11 (editor de bloques) |
-| 6.18 | Project Manager / Launcher | 🆕 | F0.5 |
+| 6.18 | Project Manager / Launcher | ✅ hecho (commit `111782f`) | F0.5 |
 | 6.19 | Publisher (Player + pantalla de carga) | 🆕 | F12 |
-| 6.20 | **Game Library / DB Manager** 🆕 | 🆕 | F0.5 |
-| 6.21 | **Cloud Gallery (publicar online)** 🆕 | 🆕 | F12 |
+| 6.20 | **Game Library / DB Manager** 🆕 | ✅ hecho (commit `111782f`) | F0.5 |
+| 6.21 | **Cloud Gallery (publicar online)** 🆕 | 🆕 API y reproductor listos; publicación desde F12 | F12 |
 
 ### 6.1 Sprite Slicer + Background Remover — ✅ YA HECHO (adaptar)
 - **Objetivo:** cortar hojas de sprites (p.ej. Daedroth 718×1509px) en frames y eliminar fondo.
@@ -432,7 +432,7 @@ raycastjs/
 | Fase | Estado |
 |---|---|
 | F0 Toolchain + migración retro | ✅ **Completada** (commit `221ffff`) |
-| F0.5 Backend + DB (Hono/Postgres) + Game Library + schema v2 | ⏳ Pendiente |
+| F0.5 Backend + DB (Hono/Postgres) + Game Library + schema v2 | ✅ **Completada** (commit `111782f`) |
 | F1 Level Editor 3D + viewport + playtest | ⏳ Pendiente |
 | F2 Motor 3D + audio + física cinemática | ⏳ Pendiente |
 | F3 Pipeline sprites + Asset Manager + Fonts + Loading | ⏳ Pendiente |
