@@ -1,0 +1,22 @@
+{
+  "name": "raycast-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RayCast Studio — creador web de RPG 2.5D/3D retro (Fase 0: toolchain + motor retro en TS)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

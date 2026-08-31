@@ -1,0 +1,386 @@
+# ROADMAP — RayCast Studio
+
+> Creador web de RPG 2.5D/3D retro (estilo Wolfenstein 3D → Doom → Daggerfall).
+> Plan maestro del proyecto. Sustituye a `SPRITE_TOOLS_PLAN.md` (ver §9 Herencia).
+
+---
+
+## 1. Visión
+
+Convertir **RayCast.js** en una plataforma web tipo *RPG Maker* para construir videojuegos de rol en primera persona con estética retro-3D. El producto tiene **tres caras**:
+
+- **Studio** — conjunto de herramientas web (editor de niveles 3D, pipeline de sprites, IA, misiones, diálogos, combate, magia, comercio, progresión, visual scripting).
+- **Runtime** — doble motor de render que ejecuta los juegos: modo **retro** (raycaster Canvas clásico) y modo **3d** (WebGL con verticalidad/eje Z, estilo XnGine/Daggerfall).
+- **Player/Publisher** — exporta un juego terminado a un **HTML autónomo** jugable en cualquier navegador, sin servidor ni instalación.
+
+**Un juego creado = una carpeta de proyecto** (`project.json` + `assets/`). Todo es datos: las herramientas escriben datos, los motores leen datos.
+
+**Principio de UX rector:** todo en el Studio es **arrastrar y unir** — assets sobre el viewport, bloques predefinidos sobre entidades, y bloques entre sí con cables en los blueprints. El scripting por código queda excluido del alcance (decisión del usuario): la creación debe ser fácil, sin escribir una línea.
+
+---
+
+## 2. Decisiones y justificación técnica
+
+| Decisión | Justificación |
+|---|---|
+| **Web, no escritorio** | El XnGine original es propietario de Bethesda y su código nunca llegó a publicarse; `kevinmkchin/XNGINE` es un renderer C++ sin relación con él. No hay motor C++ que incrustar → se escribe uno propio. WebGL da GPU desde el navegador y la app entera corre sin instalación. Si algún día se quiere desktop, Electron/Tauri envuelve el mismo TypeScript sin reescribir nada. |
+| **Motor dual (retro + 3d)** | Decide el autor por proyecto. `retro` conserva el look Wolf3D puro (el raycaster actual); `3d` aporta verticalidad real (alturas de piso/techo, rampas, pisos superpuestos, terreno ondulado). Ambos comparten el mismo `project.json`. |
+| **TypeScript + Vite + Vitest** | El proyecto pasará de ~500 líneas a decenas de miles. Tipado para el modelo de datos (un cambio en `project.json` se propaga a todas las herramientas), build modular, dev-server `npm run dev` y tests integrados. |
+| **Three.js para 3D (no WebGL a mano)** | Reutilizar una librería madura en lugar de escribir un renderer propio: escena, cámara, mallas, texturas, raycasting del editor. El trabajo propio es el *sector system* (verticalidad) encima, no el pipeline gráfico. |
+| **Formato de datos propio, único** | Desacopla herramientas ↔ motores. Un editor escribe JSON; otro motor puede leer el mismo JSON sin tocar las herramientas. Schema versionado. |
+| **Física cinemática ligera de género (no Rigidbody completo)** | Mover-y-colisionar contra sectores + gravedad (saltos, caídas), escaleras, elevadores y triggers. Un Rigidbody físico-realista (masa, fricción, joints) es sobredimensionado para un FPS 2.5D retro: complica y no aporta nada visible. `cannon-es` queda como opción futura solo para props dinámicos/proyectiles. |
+| **Visual Scripting (blueprints), nunca C#/C++** | La lógica del juego se diseña con grafos de nodos conectados por cables (estilo Unreal Blueprints). Un mismo runtime ejecuta IA, misiones, diálogos, eventos de mapa y cutscenes. |
+| **Sistemas RPG inspirados en Daggerfall Unity** | Proyecto open-source MIT con 10 años resolviendo exactamente estos sistemas (quests `QRC/QBN`, diálogos, facciones, clases). Es el blueprint de arquitectura, no código copiable. |
+| **Fidelidad de época** | Tipografías MS-DOS/rpg 90s y pantallas de carga son parte del producto, no decoración: definen la identidad visual retro. |
+
+---
+
+## 3. Análisis de los componentes del motor
+
+| Componente | ¿Se crea? | Forma concreta | Justificación |
+|---|---|---|---|
+| **Sistema de renderizado** | ✅ Sí | Motor **dual**: `retro` (raycaster TS sobre Canvas 2D) y `3d` (Three.js/WebGL) con cámara **perspectiva** (juego) y **ortográfica** (vista top-down del editor). | Ya decidido; Three.js evita reinventar WebGL. |
+| **Motor de físicas** | ✅ Sí (ligero) | Módulo `src/core/physics` **cinemático para el género**: mover-y-colisionar contra sectores (muros, alturas piso/techo), gravedad para saltos, escaleras/elevadores, zonas trigger. | Ver §2: física *de género* cubre el 100% de las mecánicas pedidas (saltos, rampas, pisos) sin el costo de un Rigidbody completo. |
+| **Gestor de audio** | ✅ Sí | Módulo `src/core/audio` sobre **Web Audio API** (stdio del navegador, sin librería): `PannerNode` para **sonido espacial 3D**, música de fondo en loop, SFX one-shot, mixers por categoría. | Nunca se había contemplado; necesario en cualquier RPG. |
+| **Sistema de scripting** | ❌ NO como código | **Visual Scripting Engine + Blueprint Editor**: grafos de nodos (Eventos/Condiciones/Acciones/Variables/Flujo) unidos con cables. **Nunca C#/C++.** | Requisito del usuario: arrastrar bloques y unirlos, no escribir código. |
+
+---
+
+## 4. Arquitectura general
+
+```
+┌─────────────────────────────── STUDIO (herramientas) ───────────────────────────────┐
+│ Launcher │ Asset Manager │ Level Editor │ Blueprint │ AI │ Quest │ Dialogue │ …     │
+│ Font Manager │ Loading Editor │ Publisher                                            │
+└──────────────┬──────────────────────────────────────────────────────────────────────┘
+               │  lee/escribe
+               ▼
+┌─────────────────────────── capa de datos (project.json + loaders) ──────────────────┐
+│ schemas (Zod) │ loaders │ migraciones │ indexedDB + export/import de proyecto       │
+└──────────────┬──────────────────────────────────────────────────────────────────────┘
+               ▼
+┌─────────────────────────────── RUNTIME (motores) ───────────────────────────────────┐
+│ Core: ECS, game loop, eventos, input, física cinemática, audio, save/load            │
+│ Render:  Retro (raycaster Canvas)   │   3D (Three.js + sector system + terrain)      │
+│ Systems: player, ai, combat, magic, inventory/trade, quests, dialogue, progression, │
+│          visualscript (blueprints)                                                   │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Principio rector:** nada duplicado entre motores salvo el render; todo lo demás vive una vez en Core/Systems y sirve a ambos.
+
+---
+
+## 5. Modelo de datos (`project.json`)
+
+```jsonc
+{
+  "meta":       { "name", "schemaVersion", "renderMode": "retro" | "3d", "author" },
+  "settings":   { "resolution", "fov", "playerStart", "dayNight" },       // por mapa
+  "textures":   [ { "id", "src", "repeat", "isTransparent" } ],
+  "sprites":    [ { "id", "sheet", "frames", "animations", "scale" } ],   // salida del sprite pipeline
+  "fonts":      [ { "id", "atlas", "glyphsSz", "baseline" } ],            // tipografías DOS (bitmap)
+  "textStyles": [ { "id", "fontId", "sizePx", "color", "shadow" } ],
+  "audio":      [ { "id", "src", "loop", "volume", "spatial": true } ],
+  "loading":    [ { "id", "bg", "progressBar", "tips": [ ... ] } ],       // pantallas de carga
+  "map":        {
+    "size", "grid": [],                          // solo retro: ids de tiles
+    "sectors": [ { "id", "floorH", "ceilH",      // retro-vertical + 3d
+                   "floorTex", "ceilTex",
+                   "walls": [ { "a", "b", "tex", "portalsTo" } ] } ],
+    "terrain":  [ { "x", "y", "h" } ],           // 3d exterior (xnGine-outdoor)
+    "zones":    [ { "id", "trigger", "blockId" | "blueprintId" } ]
+  },
+  "entities":   [ { "id", "type", "sprite", "pos": {x,y,z},
+                    "behavior" | "blockId" | "blueprintId", "stats" } ],
+  "blocks":     [ { "id", "category": "doors|ai|combat|motion|ambient",
+                    "graph": "<blueprintId>", "params": [...] } ],        // bloques predefinidos
+  "blueprints": [ { "id", "nodes": [ ... ], "wires": [ ... ] } ],          // visual scripting
+  "behaviors":  [ { "id", "fsm": { estados y transiciones } } ],
+  "items":      [ { "id", "name", "type", "effects", "price", "icon", "stackable" } ],
+  "spells":     [ { "id", "name", "school", "manaCost", "effects", "fx" } ],
+  "npc":        [ { "id", "sprite", "dialogueId", "faction", "shopId" } ],
+  "dialogue":   [ { "id", "nodes": [ { "text", "options", "conditions", "actions" } ] } ],
+  "quests":     [ { "id", "title", "stages": [ { "step", "condition", "action" } ], "rewards" } ],
+  "economy":    [ { "id", "currency", "shops": [ { "items", "prices", "restock" } ] } ],
+  "progression":[ { "id", "class", "attributes", "skills", "xpCurve", "perLevel" } ],
+  "localization": { "es": { ... }, "en": { ... } }
+}
+```
+
+Regla: **schema versionado + validadores (Zod)**. Una herramienta o motor que reciba un proyecto de versión distinta avisa y migra.
+
+---
+
+## 6. Catálogo de herramientas
+
+Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas · estado**.
+
+| # | Herramienta | Estado | Fase |
+|---|---|---|---|
+| 6.1 | Sprite Slicer + Background Remover | ✅ hecho → **adaptar** a TS/AssetManager | F3 |
+| 6.2 | Sprite Animator | ⏳ pendiente (heredado) | F3 |
+| 6.3 | Entity Builder | ⏳ pendiente (heredado) | F3 |
+| 6.4 | Asset Manager (texturas, sprites, audio, fuentes, modelos) | 🆕 | F3 |
+| 6.5 | Level Editor (mapa + sectores + altura Z + rampas) | 🆕 **primer hito** | F1 |
+| 6.6 | 3D Viewport / Playtest (perspectiva + orto) | 🆕 | F1–F2 |
+| 6.7 | Behavior / AI Editor (sobre blueprint runtime) | 🆕 | F4 |
+| 6.8 | 5.Quest Editor (genera blueprints) | 🆕 | F8 |
+| 6.9 | Dialogue Editor (genera blueprints) | 🆕 | F7 |
+| 6.10 | Combat Editor (armas, proyectiles, anims de combate) | 🆕 | F5 |
+| 6.11 | Magic / Skills Editor | 🆕 | F6 |
+| 6.12 | Items / Economy Editor | 🆕 | F5/F9 |
+| 6.13 | Progression / Class Editor | 🆕 | F10 |
+| 6.14 | **Visual Scripting / Blueprint Editor** | 🆕 **central** | F4 |
+| 6.15 | Tipografías DOS / Font Manager | 🆕 | F3 |
+| 6.16 | Pantallas de carga / Loading Editor | 🆕 | F3 |
+| 6.17 | Bloques predefinidos reutilizables (catálogo) | 🆕 | F4 (catálogo base) · F11 (editor de bloques) |
+| 6.18 | Project Manager / Launcher | 🆕 | F0 |
+| 6.19 | Publisher (Player + pantalla de carga) | 🆕 | F12 |
+
+### 6.1 Sprite Slicer + Background Remover — ✅ YA HECHO (adaptar)
+- **Objetivo:** cortar hojas de sprites (p.ej. Daedroth 718×1509px) en frames y eliminar fondo.
+- **Justificación:** puerta de entrada del asset 2D; sin sprites no hay entidades (todo en este género es billboard).
+- **Flujo:** arrastrar PNG → detectar grilla/frames → ajustar tolerancia, flood-fill/color key, trim → exportar frames + `sprites.json`.
+- **I/O:** PNG → frames PNG + JSON.
+- **Adaptación:** el trabajo de `tools/sprite-slicer.js` (detector, background removal, UI) está funcional. Migrar a TS bajo `src/studio/sprite-tools/`, conectarlo al Asset Manager y aceptar las hojas grandes de `assets/daggerfall/`.
+
+### 6.2 Sprite Animator — ⏳ pendiente
+- **Objetivo:** definir animaciones (idle/walk/attack/death) sobre frames, con fps y loop, y previsualizarlas.
+- **Justificación:** el datum de animación es la base de la IA y del combate.
+- **Flujo:** seleccionar frames → nombrar anim → marcar fps/loop → previsualizar ▶ → guardar en `sprites[].animations`.
+
+### 6.3 Entity Builder — ⏳ pendiente
+- **Objetivo:** convertir sprite animado + configuración en una entidad colocable (enemy/npc/prop).
+- **Justificación:** puente sprites→mundo; define stats y comportamiento sin tocar código.
+- **Flujo:** elegir sprite → tipo → stats (hp/damage/speed/sight) → comportamiento → posición → guardar en `entities[]`.
+
+### 6.4 Asset Manager — 🆕 (ampliado)
+- **Objetivo:** biblioteca central (texturas 64×64, sprites, audio, fuentes, modelos). Importar, organizar, previsualizar, optimizar.
+- **Justificación:** un solo lugar que resuelve `id → archivo` y asegura que las exportaciones solo incluyan lo usado.
+- **Flujo:** importar → organizar → id autogenerado → disponible en dropdowns de todos los editores → informe de assets sin usar.
+
+### 6.5 Level Editor (mapa + verticalidad) — 🆕 PRIMER HITO
+- **Objetivo:** editar el mundo: grid de tiles (retro), sectores con altura de piso/techo, rampas, zonas de trigger y colocación de entidades.
+- **Justificación:** corazón del creador; todo lo demás pende de tener un mundo recorrible en 3D.
+- **Flujo:**
+  1. Abrir vista 2D (top-down, pintar por tiles) o 3D (viewport Three.js, cámara orbit).
+  2. Panel de materiales (Asset Manager) → pintar suelo/paredes.
+  3. Seleccionar sector → arrastrar elevación de piso/techo → rampas y pisos superiores (portales).
+  4. Colocar entidades desde el Entity Builder, ajustar rotación/z (drag & drop al viewport).
+  5. Zonas de trigger (entrar/colisionar/activar) → enlazar blueprint o bloque.
+  6. Playtest dentro del editor (F5).
+- **I/O:** `map` + `entities`.
+
+### 6.6 3D Viewport / Playtest — 🆕
+- **Objetivo:** vista de juego en vivo dentro del Studio + vista orbit para editar.
+- **Justificación:** sin playtest en vivo no se valida verticalidad, colisión ni dificultad.
+- **Flujo:** F5 → runtime con el proyecto en memoria → WASD + ratón → F6 vuelve al editor manteniendo la posición (edición en vivo).
+
+### 6.7 Behavior / AI Editor — 🆕
+- **Objetivo:** diseñar el cerebro de enemigos y NPC: máquina de estados con condiciones y acciones, ejecutándose sobre el runtime de blueprints.
+- **Justificación:** la IA varía de juego a juego; editor visual ≫ código por entidad.
+- **Flujo:** estado → transición (condición) → acción → asignar a entidad, o arrastrar un **bloque de IA predefinido** (patrulla, emboscada).
+- **I/O:** `behaviors[]` + `entities[].behavior`.
+
+### 6.8 Quest Editor — 🆕
+- **Objetivo:** misiones en etapas (trigger → condición → acción → recompensa), patrón Daggerfall `QRC/QBN` simplificado. Se genera un blueprint por detrás.
+- **Justificación:** columna vertebral del RPG.
+- **Flujo:** crear quest → título/descripción → lista de etapas (condición + acción) → recompensas → probar con consola de depuración (`startquest`).
+- **I/O:** `quests[]` + `blueprints[]`.
+
+### 6.9 Dialogue Editor — 🆕
+- **Objetivo:** árboles de diálogo por nodos: texto, opciones, retratos, condiciones y acciones.
+- **Justificación:** NPCs sin diálogo no son NPCs.
+- **Flujo:** nodo raíz → ramas/opciones → condiciones en aristas → acciones al llegar → previsualizar.
+- **I/O:** `npc[]` + `dialogue[]` + `blueprints[]`.
+
+### 6.10 Combat Editor — 🆕
+- **Objetivo:** armas cuerpo a cuerpo y a distancia, proyectiles, anims de combate, daño, alcance, cadencia.
+- **Justificación:** el combate es mecánica central; definirlo por datos permite balancear sin código.
+- **Flujo:** crear arma → stats → sprite/anim → sonido → proyectil (si aplica) → asignar.
+- **I/O:** `items[]` (type: weapon) + `entities[].stats`.
+
+### 6.11 Magic / Skills Editor — 🆕
+- **Objetivo:** hechizos y habilidades: escuela, coste de mana, efectos, FX.
+- **Justificación:** un editor de efectos reutilizables ahorra reimplementar cada spell.
+- **Flujo:** crear spell → escuela/stat → coste → efecto(s) → FX → balancear.
+- **I/O:** `spells[]`.
+
+### 6.12 Items / Economy Editor — 🆕
+- **Objetivo:** items, moneda y tiendas con restock.
+- **Justificación:** comercio y loot dan el loop de progresión.
+- **Flujo:** crear item → tipo/stats/icono/precio → tienda → inventario → NPC vendedor enlaza tienda.
+- **I/O:** `items[]` + `economy[]`.
+
+### 6.13 Progression / Class Editor — 🆕
+- **Objetivo:** clases, atributos, skills, curva XP y ganancias por nivel.
+- **Justificación:** el sistema de niveles es el contrato de combate/skills/magia.
+- **Flujo:** clase → atributos base → skills entrenables → curva XP → beneficios por nivel → XP que otorgan los enemigos.
+- **I/O:** `progression[]`.
+
+### 6.14 Visual Scripting / Blueprint Editor — 🆕 CENTRAL
+- **Objetivo:** programar la lógica del juego **sin escribir una línea**: grafo de nodos conectados por cables (estilo **Unreal Blueprints**).
+- **Justificación:** requisito central del usuario; **unifica** IA, misiones, diálogos, eventos de mapa y cutscenes en un solo runtime.
+- **Flujo:**
+  1. Panel de nodos: *Eventos* (onEnterZona, onInteract, onKill, onTimer), *Condiciones* (distancia, hp, switch/var, questStage), *Acciones* (mover, atacar, dar item, sonido, diálogo, flag), *Variables/Flujo* (branch, wait, for, math).
+  2. Crear nodos con clic/drag → arrastrar pin → soltar en pin para conectar.
+  3. Guardar como **bloque reutilizable** → aparece en la librería predefinida (6.17).
+- **Dos niveles de dificultad:**
+  - **Modo fácil:** formulario tipo RPG Maker ("en esta zona → al entrar → mostrar diálogo") que **genera el grafo** por detrás.
+  - **Modo avanzado:** editor de grafos completo.
+- **I/O:** `blueprints[]`; referenciado desde quests, diálogos, AI, zones y cutscenes.
+- **Runtime compartido:** `src/game/visualscript/` ejecutado por ambos motores.
+
+### 6.15 Tipografías DOS / Font Manager — 🆕
+- **Objetivo:** caja de fuentes pixeladas y gestor de tipografía para HUD, diálogos, banners y menús.
+- **Justificación:** el 90% de la identidad visual retro es la letra (VGA 8×16, menús DOS). Sin tipos de época el juego no "se siente" de los 90.
+- **Contenido incluido:** bundle de fuentes de dominio público/OFL — `Px437` (DOS VGA), `VT323`, `Press Start 2P` — empotradas en el motor.
+- **Flujo:** elegir fuente → crear "estilos de texto" (tamaño, color, sombra) → aplicar a HUD/diálogo/banners → **convertidor TTF→bitmap** (rasteriza a atlas pixelado con `imageSmoothing=false`).
+- **I/O:** `fonts[]` + `textStyles[]` + atlas → Asset Manager. El runtime dibuja texto con canvas sobre atlas bitmap (sin CSS en los juegos).
+
+### 6.16 Pantallas de carga / Loading Editor — 🆕
+- **Objetivo:** editor de pantallas de carga: splash + barra de progreso + consejos.
+- **Justificación:** todo RPG de la época tiene pantalla de carga; además el Player muestra algo mientras precarga texturas/audio.
+- **Flujo:** imagen o color → barra de progreso / ruleta / "tips aleatorios" → tiempo mínimo de display → previsualizar.
+- **I/O:** `loading[]`. El runtime precarga mostrándola; el Publisher la usa como pantalla del HTML autónomo.
+
+### 6.17 Bloques predefinidos reutilizables — 🆕
+- **Objetivo:** bloques listos que combinan **animación + comportamiento**: abrir/cerrar puertas, movimientos de enemigos (patrulla, zigzag, emboscada), movimientos de combate (carga, retroceso, crítico), saltos, elevador, antorcha parpadeante, teletransporte, cofre al abrir.
+- **Justificación:** "fácil = arrastrar y unir". El creador no monta puertas/IA de cero.
+- **Flujo:** Entity Builder o Level Editor → "Añadir bloque predefinido" → buscar por categoría → arrastrar sobre entidad → configurar pocos parámetros.
+- **Implementación:** sub-grafos de blueprint o animation clips empaquetados en `src/data/blocks/` (biblioteca incorporada + extensible). El editor los muestra como fichas de puzzle.
+- **I/O:** `blocks[]` / `prefabs[]`, referenciados desde `entities[]` y `map.zones[]`.
+
+### 6.18 Project Manager / Launcher — 🆕
+- **Objetivo:** crear, abrir, duplicar, importar/exportar y configurar proyectos (renderMode, resolución, autor).
+- **Justificación:** organización de la unidad de trabajo.
+- **Flujo:** landing → nuevo proyecto (plantilla) → elegir modo (`retro`/`3d`) → proyecto de arranque con assets de ejemplo.
+- **Persistencia:** IndexedDB + export/import a `*.ragproj` (carpeta/zip) para compartir y commitear.
+
+### 6.19 Publisher — 🆕
+- **Objetivo:** exportar el juego a un HTML autónomo (bundle JS + assets usados + audio + fuentes + pantalla de carga).
+- **Justificación:** el "cierre" del creador.
+- **Flujo:** seleccionar proyecto → build optimizado (tree-shake del motor dual según `renderMode`) → descarga `mi-juego.html` → jugar/compartir.
+
+---
+
+## 7. Flujo end-to-end del creador
+
+```
+1. Launcher: nuevo proyecto (elijo "3d", plantilla)
+2. Asset Manager: arrastro texturas + sprites Daggerfall
+3. Sprite pipeline: slicer → animator → entity builder
+4. Level Editor: pinto muros, doy altura al piso, hago una rampa, coloco la cámara
+5. Playtest (F5): camino por la rampa y subo de planta  ✔ verticalidad
+6. Blueprint: arrastro nodos → enemigo idle→chase→attack (o uso un bloque predefinido)
+7. Dialogue/Quest/Items: NPC con tienda y una misión de entrega
+8. Font Manager: tipografía DOS para el HUD
+9. Loading Editor: pantalla de carga con el logo
+10. Publisher → HTML jugable con su pantalla de carga
+```
+
+---
+
+## 8. Fases de implementación
+
+| Fase | Entregable | Depende de | Criterio de aceptación |
+|------|-----------|-----------|------------------------|
+| **F0** | Toolchain Vite+TS+Vitest; migrar raycaster a `src/render/retro/`; mapa a `project.json`; tests base; Launcher mínimo | — | `npm run dev` corre el mismo mundo retro en TS; `vitest` verde |
+| **F1** | **Level Editor + viewport 3D + playtest** | F0 | Pinto un mapa con rampas/pisos, lo camino en 3D y guardo/cargo |
+| **F2** | Motor 3D jugable: sector system, colisión por altura, gravedad/saltos (física cinemática), sprites billboard, minimapa 3D, **módulo de audio** (Web Audio espacial) | F1 | Rampa, escaleras y piso superior en vivo; sprites bien ocluidos; sonido espacial |
+| **F3** | Adaptar sprite pipeline heredado; Asset Manager (texturas/sprites/audio/fuentes); **Font Manager DOS** + convertidor TTF→bitmap; **pantallas de carga** | F0 | Daedroth animado en el editor; HUD con tipo DOS; pantalla de carga configurable |
+| **F4** | **Blueprint Editor completo + runtime**; pathfinding A*; IA construida sobre blueprints; **catálogo base de bloques** (puertas, patrulla, carga de combate, salto, antorcha, teletransporte); puertas/llaves/elevadores via bloques | F2, F3 | Enemigo con IA de blueprints persigue/ataca; puerta con llave; bloque predefinido arrastrado a una entidad |
+| **F5** | Combate + inventario/equipo (sobre blueprints) | F4 | Matar enemigo → loot al inventario |
+| **F6** | Magia y habilidades (spells, mana, efectos, FX) | F5 | Hechizo de fuego hace daño y cuesta mana |
+| **F7** | Diálogos (nodos + condiciones/acciones → blueprints) | F4 | NPC con árbol de diálogo y condición |
+| **F8** | Misiones (etapas/condiciones/recompensas → blueprints) | F5, F7 | Quest completa de inicio a fin con consola de depuración |
+| **F9** | Comercio (tiendas, moneda, restock, NPC vendedor) | F5 | Compra/venta en tienda con moneda y restock |
+| **F10** | Progresión (clases, atributos, XP, skills, subida de nivel) | F6, F8 | Subir de nivel, puntos de skill, curva XP |
+| **F11** | Editor de **catálogo de bloques propios** (publicar bloques reutilizables); cutscenes/eventos avanzados | F4 | Creador agrupa nodos como bloque y lo reutiliza en otro mapa |
+| **F12** | **Publisher**: HTML autónomo con pantalla de carga y solo lo usado (tipos, audio, fuentes, blueprints) | todas | HTML exportado juega igual que el dev |
+
+Verificación continua: `vitest run` + demo jugable; cada fase cierra con una demo en `localhost:8080`.
+
+---
+
+## 9. Herencia de `SPRITE_TOOLS_PLAN.md` (adaptar, no conservar tal cual)
+
+El plan anterior era *solo* herramientas de sprites para un motor estático. Su intención y lo ya construido se conservan, marcado como **adaptación**:
+
+| Antes (SPRITE_TOOLS_PLAN) | Estado | Ahora (ROADMAP) |
+|---|---|---|
+| Fase 1 — Sprite Slicer + background removal | ✅ **COMPLETADO** (`tools/sprite-slicer.js` + UI en `tools/index.html`) | **6.1** → **ADAPTAR**: migrar a TS, integrar al Asset Manager y a `assets/daggerfall/` |
+| Fase 2 — Sprite Animator | ⏳ pendiente | **6.2** |
+| Fase 3 — Entity Builder | ⏳ pendiente | **6.3** |
+| Fase 4 — SpriteSystem del motor | ⏳ pendiente | Pasa a **Core/Systems de ambos motores** (sprites billboard con Z-buffer) en F2/F3 |
+| Fase 5 — UI de herramientas | ⏳ pendiente | Su layout se reutiliza como *chrome* base del Studio (paneles / viewport) |
+| Fase 6 — Mapa de ejemplo | ⏳ pendiente | Se convierte en la **plantilla de arranque** de proyectos nuevos |
+
+La diferencia estructural: el pipeline de sprites pasa de ser el fin a ser **una fase temprana de un sistema completo de creación de RPG**, con el modelo de datos unificado como columna vertebral.
+
+---
+
+## 10. Estructura de directorios objetivo
+
+```
+raycastjs/
+├── index.html                → launcher (Studio / Jugar)
+├── vite.config.ts · tsconfig.json · package.json
+├── public/
+│   ├── textures/
+│   └── projects-demo/        → ejemplos exportados
+├── assets/
+│   ├── images/daggerfall/    → referencia de prueba
+│   └── fonts/                → fuentes DOS empotradas (Px437, VT323, Press Start 2P)
+├── src/
+│   ├── core/                 → ECS, loop, eventos, input, física cinemática, audio, save/load
+│   ├── data/                 → schemas (Zod), loaders, migraciones, blocks/
+│   ├── render/
+│   │   ├── retro/            → raycaster TS (heredado, migrado)
+│   │   └── render3d/         → Three.js + sector system + terrain
+│   ├── game/
+│   │   ├── player/  ai/  combat/  magic/  inventory-trade/
+│   │   ├── quests/  dialogue/  progression/  events/
+│   │   └── visualscript/     → runtime de blueprints
+│   ├── studio/
+│   │   ├── launcher/
+│   │   ├── asset-manager/
+│   │   ├── sprite-tools/     → slicer (adaptado) + animator + entity builder
+│   │   ├── level-editor/     → vista 2D + viewport 3D + playtest
+│   │   ├── blueprints/       → editor de grafos (Unreal-style)
+│   │   ├── ai-editor/  quest-editor/  dialogue-editor/
+│   │   ├── combat-editor/  magic-editor/  economy-editor/
+│   │   ├── progression-editor/  events/  blocks-catalog/
+│   │   ├── font-manager/     → tipografías DOS + convertidor TTF→bitmap
+│   │   ├── loading-editor/
+│   │   └── publisher/
+│   └── player/               → runtime standalone exportable
+├── tools/                    → paso intermedio: se migra a src/studio/sprite-tools/
+├── tests/                    → unit + integración (Vitest)
+└── ROADMAP.md
+```
+
+---
+
+## 11. Principios de calidad
+
+- **Energía por mantenimiento:** una prueba que falla = feature no cerrada.
+- **Cero duplicación retro/3d:** todo, salvo render, vive una vez.
+- **Assets bajo demanda:** el Publisher solo empaqueta lo usado.
+- **Reutilizar antes que crear:** Three.js, Vitest, Zod, Web Audio API, IndexedDB… (regla ponytail: no reinventar stdlib).
+- **Drag & drop como estándar de UX:** assets al viewport, bloques a entidades, nodos conectados con cables.
+- **Fidelidad retro en cada detalle:** tipografías DOS, pantallas de carga, ruido del píxel.
+
+---
+
+## 12. Estado del plan
+
+| Fase | Estado |
+|---|---|
+| F0 Toolchain + migración retro | ⏳ Pendiente |
+| F1 Level Editor 3D + viewport + playtest | ⏳ Pendiente |
+| F2 Motor 3D + audio + física cinemática | ⏳ Pendiente |
+| F3 Pipeline sprites + Asset Manager + Fonts + Loading | ⏳ Pendiente |
+| F4 Blueprints + IA + bloques predefinidos | ⏳ Pendiente |
+| F5–F12 Sistemas RPG y Publisher | ⏳ Pendiente |
