@@ -31,7 +31,9 @@ npm run preview   # sirve el build
 
 - **`src/data/schema.ts` es la fuente de verdad**: todo `project.json` entra/sale por estos schemas Zod (`parseProject` en `src/data/project.ts`). `meta.schemaVersion` es **2 (aditivo)**: el schema acepta 1|2 y canonicaliza a 2 (migración v1→v2 automática); los defaults v2 viven en Zod, no en el motor.
 - **`src/render/retro/raycaster.ts` es el motor vivo** (ya de-hardcodeado: piso/techo por id, `sprites[].flags.translucent`, minimapa configurable). `raycasting.js` (raíz) es la implementación vanilla ORIGINAL congelada: **referencia, NO modificar**.
-- **API (F0.5)**: `server/src/routes.ts` construye el app Hono (rutas `/api/auth`, `/api/projects`, `/api/assets`, `/api/templates`, `/api/gallery`, `/play/:slug`); `server/db/client.ts` elige driver según `DATABASE_URL` (`pglite:...` embebido en dev, `postgres://...` en prod); `server/db/ensure.ts` crea tablas y siembra `tpl-demo`. La SPA consulta **siempre el mismo origen** (proxy de Vite en dev).
+- **UI/Design System**: `DESIGN.md` define la paleta de colores, tipografía, espaciado y todos los componentes reutilizables (botones, inputs, tabs, tablas, modales, toasts, spinners, iconos, layout). **Leer `DESIGN.md` antes de crear cualquier componente UI.** Los componentes viven en `src/studio/ui/` y son framework-agnostic (vanilla JS → migrable a Lit/Svelte).
+- **API (F0.5)**: `server/src/routes.ts` construye el app Hono (rutas `/api/auth`, `/api/projects`, `/api/assets`, `/api/templates`, `/api/gallery`, `/play/:slug`); **Prisma** es el ORM sobre **PostgreSQL** (schema en `server/db/schema.prisma`, migraciones con `prisma migrate`, `DATABASE_URL=postgres://...`); `server/db/ensure.ts` crea tablas y siembra `tpl-demo`. La SPA consulta **siempre el mismo origen** (proxy de Vite en dev).
+- **Contrato de API y errores**: todo endpoint responde con el envoltorio `{ success, data, error }` (ver `ROADMAP.md` §5b). Códigos de error centralizados en `server/src/errors/codes.ts`; los endpoints `throw new AppError(...)` y **NUNCA** responden JSON suelto; el interceptor global (`server/src/errors/handler.ts`, `app.onError`) unifica la respuesta de error. En el front, `apiFetch` desenvuelve el contrato y lanza `ApiError`. Añadir un error nuevo = editarlo en `codes.ts` (único lugar).
 - Boot: `index.html` → `src/main.ts` → vista de auth; con sesión, Game Library (6.20) con CRUD por API y reproductor RetroGame montado en la SPA.
 - `vite.config.ts`: `base: './'` es **deliberado** (build standalone abrible desde `file://`, Publisher F12), `server.port = 8080` y proxy `/api` + `/play` → `:3000`. Mantener todos.
 - `tools/` (sprite-slicer vanilla) se adapta a TS en F3; no tocar en F0/F0.5.
@@ -48,11 +50,12 @@ npm run preview   # sirve el build
 
 - **Cada vez que se complete una fase del ROADMAP, marcarla como terminada** en la tabla de "Estado del plan" (`ROADMAP.md` §12), indicando el commit si existe (p.ej. `✅ Completada (commit 221ffff)`). No quedarse en código: el plan debe reflejar el avance.
 - **No hardcodear valores.** Toda constante que sea dato del juego (texturas de piso/techo, flags de sprite, colores de minimapa, resolución, config) debe declararse en el `project.json` validado con Zod — no embutirse en el código del motor ni en la UI. Los únicos datos permitidos en código son configuración de infraestructura (puertos, `base: './'`) y constantes sin representación en el modelo.
+- **Todo a la DB (nada local).** Toda la información de juegos se persiste en Postgres vía Prisma: el `project.json` completo en `proyecto.data` (JSONB) y las rutas de assets en `asset.ruta`. **No** guardar mapas, proyectos o data de juegos en `localStorage`/memoria como fuente de verdad, ni hardcodearlos. El único almacenamiento en disco es el filesystem de blobs para los **bytes** de los assets (nunca el dato del juego). El esquema completo está en `DATABASE.md`.
 
 ## Estado y siguiente trabajo
 
 - F0 (toolchain + motor retro migrado) ✅ completada (commit `221ffff`).
-- F0.5 (backend + Game Library + schema v2): ver §12 del ROADMAP.
-- **Lo que viene: F1** — Level Editor 3D (depende de F0.5). Antes de F1, en F3 se adaptan los `tools/`.
+- F0.5 (backend + Game Library + schema v2) ✅ completada (commit `111782f`).
+- **Lo que viene: F0.7** — Design System + componentes reutilizables (ver `DESIGN.md`). Después F1 — Level Editor 3D.
 - Publisher = HTML autónomo + galería pública (F12).
 - `opencode.json` declara el plugin `@dietrichgebert/ponytail` y MCP `context7`: reutilizar librerías antes que reinventar (regla del plan).

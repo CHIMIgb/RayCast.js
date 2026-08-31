@@ -33,7 +33,7 @@ Convertir **RayCast.js** en una plataforma web tipo *RPG Maker* para construir v
 | **Sistemas RPG inspirados en Daggerfall Unity** | Proyecto open-source MIT con 10 años resolviendo exactamente estos sistemas (quests `QRC/QBN`, diálogos, facciones, clases). Es el blueprint de arquitectura, no código copiable. |
 | **Fidelidad de época** | Tipografías MS-DOS/rpg 90s y pantallas de carga son parte del producto, no decoración: definen la identidad visual retro. |
 | **Backend desde el inicio (API REST + Postgres)** | La biblioteca de juegos del creador y sus preferencias viven en servidor: multidispositivo, backup centralizado y galería pública. No contradice al Publisher: el HTML autónomo sigue siendo la exportación sin cuenta; la galería es una vía adicional de publicar/jugar. |
-| **Stack API: Node + Hono + Drizzle + Postgres** | Hono (liviano, TypeScript end-to-end, validación Zod nativa). Drizzle sobre `postgres.js` con `projects` como **JSONB** (documento v2 completo). Auth **JWT propios + bcrypt**, sesión stateless, sin proveedor OAuth por ahora. Blobs en filesystem del servidor (S3/R2 opcional en el futuro). |
+| **Stack API: Node + Hono + Prisma + Postgres** | Hono (liviano, TypeScript end-to-end, validación Zod nativa). **Prisma** como ORM sobre PostgreSQL con `projects` como **JSONB** (documento v2 completo), migraciones versionadas (`prisma migrate`) y Prisma Studio para inspección. Auth **JWT propios + bcrypt**, sesión stateless, sin proveedor OAuth por ahora. Blobs en filesystem del servidor (S3/R2 opcional en el futuro). |
 
 ---
 
@@ -127,13 +127,118 @@ Migración automatizada v1→v2 (migrator Zod): un proyecto v1 se carga y se nor
 
 ### Entidades del servidor (Postgres)
 
+> **Esquema completo en `DATABASE.md`** (fuente de verdad del esquema; de ahí se genera `server/db/schema.prisma`).
+
 | Tabla | Campos clave | Uso |
 |---|---|---|
-| `users` | id, email (único), password_hash, created_at | Cuentas y sesiones JWT |
-| `projects` | id, owner_id, name, schema_version, render_mode, data (**JSONB** con el documento v2), thumbnail, updated_at, published_at | Biblioteca de juegos del creador |
-| `assets` | id, project_id, path, hash, size, mime | Blobs; bytes en filesystem del servidor |
-| `gallery` | slug (único), project_id, description, visits | Galería pública `/play/:slug` |
-| `templates` | id, name, data (JSONB v2) | Plantillas semilla (incluye el demo) |
+| `persona` | id, nombre, apellido, email_publico, bio, avatar_path | Datos reales del individuo (públicos) |
+| `usuario` | id, persona_id (1:1), rol_id (N:1), login (único), password_hash | Credenciales de acceso y sesión JWT |
+| `rol` | id, nombre (único: admin/creador), descripcion | Tipos de usuario |
+| `proyecto` | id, propietario_id (→usuario), nombre, slug, **estado** (`EN_DESARROLLO`/`PUBLICADO`), schema_version, render_mode, data (**JSONB** con el documento v2 completo), thumbnail_path, published_at | Biblioteca de juegos del creador; **todo el juego vive en `data`** |
+| `asset` | id, propietario_id, proyecto_id, nombre, tipo (texture/sprite/audio/font/modelo), mime, tamano_bytes, ruta (único), hash | Blobs: metadatos en DB, **bytes en filesystem**, ruta en `asset.ruta` |
+| `galeria` | id, proyecto_id (1:1), slug (único), titulo, descripcion, visitas | Publicación pública `/play/:slug` (proyecto con `estado=PUBLICADO`) |
+| `plantilla` | id, nombre, descripcion, data (JSONB v2) | Plantillas semilla (incluye el demo) |
+
+**Regla transversal:** **toda la data del juego se persiste en la DB** (Postgres vía Prisma): el `project.json` completo en `proyecto.data` (JSONB) y las rutas de assets en `asset.ruta`. Nada hardcodeado ni almacenado solo local/flags. El único disco es el filesystem de blobs para los bytes de los assets.
+
+---
+
+## 5b. Contrato de comunicación Front ⇄ Backend
+
+Todo `fetch` de la SPA hacia `/api/*` devuelve la **misma estructura JSON**. Es el único contrato de respuesta entre front y backend: los componentes de UI solo leen `success`, `data` y `error`, nunca la forma interna del endpoint.
+
+### Envoltorio estándar de respuesta
+
+```jsonc
+{
+  "success": true,                // boolean
+  "data":     { ... },            // object | null — payload en caso de éxito (null en POST sin cuerpo)
+  "error":    null                // null en caso de éxito
+}
+```
+
+```jsonc
+{
+  "success": false,
+  "data":     null,
+  "error": {
+    "code":    "PROJECT_NOT_FOUND",   // código estable (string), clave del diccionario
+    "message": "El proyecto no existe", // mensaje legible para el usuario final
+    "details": { "id": "abc123" }       // any — opcional, contexto técnico para depurar
+  }
+}
+```
+
+**Reglas del contrato:**
+- `success: true` ⇒ `data` = payload (nunca `null` salvo en acciones sin retorno) y `error = null`.
+- `success: false` ⇒ `data = null` y `error` siempre presente con `code` + `message`.
+- El cliente NUNCA parsea el body según el endpoint; **siempre** lee el envoltorio.
+- HTTP status: 200/201/204 en éxito; 400/401/403/404/409/422/500 en error (el status HTTP complementa, pero el flujo real lo decide `success`/`code`).
+
+### Códigos de error (diccionario centralizado)
+
+Todos los códigos viven en un **único archivo** del servidor (`server/src/errors/codes.ts`) y del cliente (`src/api/errors.ts`), tipo-enlazados. Tabla no exhaustiva:
+
+| Código | HTTP | Mensaje | Cuándo |
+|--------|------|---------|--------|
+| `VALIDATION_ERROR` | 422 | Datos inválidos | Zod falla (schema de entrada) |
+| `UNAUTHORIZED` | 401 | No autenticado | Falta/expira el JWT |
+| `FORBIDDEN` | 403 | Sin permiso | Autenticado pero sin acceso al recurso |
+| `NOT_FOUND` | 404 | No encontrado | Recurso genérico inexistente |
+| `PROJECT_NOT_FOUND` | 404 | Proyecto no existe | `id` de proyecto inválido |
+| `ASSET_NOT_FOUND` | 404 | Asset no existe | `id` de asset inválido |
+| `EMAIL_IN_USE` | 409 | Email ya registrado | Register con email duplicado |
+| `INVALID_CREDENTIALS` | 401 | Credenciales incorrectas | Login fallido |
+| `SLUG_TAKEN` | 409 | Slug de galería ocupado | Publish con slug duplicado |
+| `STORAGE_WRITE_ERROR` | 500 | No se pudo escribir el archivo | Fallo en blobs del filesystem |
+| `INTERNAL_ERROR` | 500 | Error interno | Cualquier fallo no categorizado |
+
+### Arquitectura del manejo de errores (3 piezas)
+
+```
+server/src/
+├── errors/
+│   ├── codes.ts              ← diccionario de códigos + mensajes (fuente única)
+│   ├── AppError.ts           ← clase AppError{ code, message, status, details }
+│   └── handler.ts            ← interceptor global (Hono app.onError)
+└── routes/                   ← cada endpoint lanza AppError o usa handler; NUNCA responde JSON suelto
+```
+
+1. **`codes.ts`** — diccionario: `export const ERRORS = { VALIDATION_ERROR: { status: 422, message: '...' }, ... }`. Un cambio aquí añade/edita un código y su mensaje en un solo lugar (también sirve como documentación viva de la API).
+
+2. **`AppError`** — clase con `{ code, message, status, details }`. Los endpoints `throw new AppError('PROJECT_NOT_FOUND', { id })`. También hay helpers: `throwBadRequest(msg)` … o `AppError.fromZod(zodError)` que mapea el error de Zod a `VALIDATION_ERROR` con `details.issues`.
+
+3. **`handler.ts`** — **interceptor global** registrado en Hono (`app.onError((err, c) => ...)`). Atrapa:
+   - `AppError` → responde su `{ success:false, data:null, error:{ code, message, details } }` con su `status`.
+   - `AppError.fromZod` / errores de validación → `VALIDATION_ERROR` (422).
+   - cualquier otro `Error` → `log error` y responde `INTERNAL_ERROR` (500), **sin filtrar stack trace ni datos internos** al front.
+   - not-found de ruta no existente → `NOT_FOUND` (404).
+
+**Flujo de un endpoint:**
+```ts
+// routes/projects.ts
+app.get('/api/projects/:id', async (c) => {
+  const project = await db.project.findUnique({ where: { id: c.req.param('id') } });
+  if (!project) throw new AppError('PROJECT_NOT_FOUND', { id: c.req.param('id') });
+  return c.json(ok(project));
+});
+```
+El endpoint solo se preocupa de: validar, llamar a la DB y `throw` cuando algo no cuadra. **Toda la respuesta de error la unifica el interceptor** → cero JSON suelto `{ error: '...' }` repartido por el código.
+
+### Cliente tipado (front)
+
+`src/api/client.ts` expone un `apiFetch<T>(...)` que desenvuelve el contrato y lanza excepciones tipadas del lado cliente:
+
+```ts
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
+  const body = await res.json();
+  if (!body.success) throw new ApiError(body.error);   // ApiError{ code, message, details }
+  return body.data as T;
+}
+```
+
+Así la UI hace `const project = await apiFetch('/api/projects/1')` y el **toast/interceptor global del front** captura `ApiError` para mostrar el mensaje al usuario (ver `DESIGN.md` §5.6). El front puede traducir `code` → mensaje localizado sin depender del `message` inglés del server si lo desea.
 
 ---
 
@@ -164,6 +269,7 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 | 6.19 | Publisher (Player + pantalla de carga) | 🆕 | F12 |
 | 6.20 | **Game Library / DB Manager** 🆕 | ✅ hecho (commit `111782f`) | F0.5 |
 | 6.21 | **Cloud Gallery (publicar online)** 🆕 | 🆕 API y reproductor listos; publicación desde F12 | F12 |
+| 6.22 | **Design System / Componentes reutilizables** 🆕 | 🆕 | F0.7 |
 
 ### 6.1 Sprite Slicer + Background Remover — ✅ YA HECHO (adaptar)
 - **Objetivo:** cortar hojas de sprites (p.ej. Daedroth 718×1509px) en frames y eliminar fondo.
@@ -302,6 +408,24 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 - **Flujo:** Publish → "Publicar en galería" (slug, descripción, portada) → vista pública jugable (mismo runtime que el editor) → contador de visitas → despublícar cuando se quiera.
 - **I/O:** `gallery` (slug, description, visits) + el `project.json` v2 de la fila de `projects`. Reutiliza el build optimizado de 6.19.
 
+### 6.22 Design System / Componentes reutilizables — 🆕
+- **Objetivo:** paleta de colores (tokens CSS), tipografía, espaciado, y catálogo completo de componentes UI reutilizables para todo el Studio.
+- **Justificación:** sin un design system, cada herramienta inventa su UI → inconsistencia visual, duplicación de código, y más trabajo para mantener. Un sistema de componentes unificado permite construir herramientas rápidamente con look profesional.
+- **Componentes:**
+  - **Botones:** Primary, Secondary, Danger, Ghost, Icon (5 variantes × 3 tamaños × 4 estados)
+  - **Inputs:** TextInput, NumberInput, Select, Checkbox, Slider, ColorInput, FileInput
+  - **Tabs:** headers con contenido, scrollable si exceden
+  - **Tablas:** sortable, selectables, empty state
+  - **Modales:** overlay + dialog con focus trap, animaciones
+  - **Toasts:** success, warning, error, info con auto-dismiss
+  - **Loading:** Spinner circular, Skeleton shimmer, Progress bar
+  - **Estados:** Vacío (icono + acción), Error (detalle + reintentar), Carga (spinner + texto)
+  - **Iconos:** lucide SVG inline (16×16, 20×20), hereda color del padre
+  - **Layout:** Panel (header colapsable), SplitView (redimensionable), Stack, ScrollArea, Divider
+- **Flujo:** ver `DESIGN.md` para paleta, tipografía, espaciado y patrones de comportamiento.
+- **I/O:** `src/studio/ui/` — componentes vanilla JS, migrables a Lit/Svelte.
+- **Entregable:** demo page (`/components`) que muestra todos los componentes en todos sus estados.
+
 ---
 
 ## 7. Flujo end-to-end del creador
@@ -326,8 +450,9 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 | Fase | Entregable | Depende de | Criterio de aceptación |
 |------|-----------|-----------|------------------------|
 | **F0** | Toolchain Vite+TS+Vitest; migrar raycaster a `src/render/retro/`; mapa a `project.json`; tests base; Launcher mínimo | — | `npm run dev` corre el mismo mundo retro en TS; `vitest` verde |
-| **F0.5** | **Backend + base de datos**: API Hono+Postgres (auth JWT, CRUD de `/api/projects` y `/api/assets`, `/api/templates` seed, `/api/gallery`); **Game Library 6.20**; migración a **schema v2** + de-hardcoding del motor (piso/techo, flags de sprite, minimapa) | F0 | `npm run dev` levanta SPA+API; la biblioteca lista/crea/guarda proyectos por API; el mundo retro lee `project.json` v2; migración v1→v2 automática |
-| **F1** | **Level Editor + viewport 3D + playtest** | F0.5 | Pinto un mapa con rampas/pisos, lo camino en 3D y guardo/cargo (por API) |
+| **F0.5** | **Backend + base de datos**: API Hono+**Prisma**+Postgres (auth JWT, CRUD de `/api/projects` y `/api/assets`, `/api/templates` seed, `/api/gallery`); **Game Library 6.20**; migración a **schema v2** + de-hardcoding del motor (piso/techo, flags de sprite, minimapa) | F0 | `npm run dev` levanta SPA+API; la biblioteca lista/crea/guarda proyectos por API; el mundo retro lee `project.json` v2; migración v1→v2 automática |
+| **F0.7** | **Design System + componentes reutilizables**: paleta de colores (tokens CSS), tipografía, espaciado, y componentes UI: botones (5 variantes), inputs (text, number, select, checkbox, slider, color, file), tabs, tablas, modales, toasts, spinners, skeletons, progress bars, estados (vacío, error, carga), iconos (lucide SVG), layout helpers (Panel, SplitView, Stack, ScrollArea, Divider). Ver `DESIGN.md`. | F0.5 | Todos los componentes renderizados en una **demo page** (`/components`); paleta dark consistente; cada componente con 3+ estados (default, hover, disabled); atajos de teclado documentados |
+| **F1** | **Level Editor + viewport 3D + playtest** | F0.7 | Pinto un mapa con rampas/pisos, lo camino en 3D y guardo/cargo (por API) |
 | **F2** | Motor 3D jugable: sector system, colisión por altura, gravedad/saltos (física cinemática), sprites billboard, minimapa 3D, **módulo de audio** (Web Audio espacial) | F1 | Rampa, escaleras y piso superior en vivo; sprites bien ocluidos; sonido espacial |
 | **F3** | Adaptar sprite pipeline heredado; Asset Manager (texturas/sprites/audio/fuentes); **Font Manager DOS** + convertidor TTF→bitmap; **pantallas de carga** | F0 | Daedroth animado en el editor; HUD con tipo DOS; pantalla de carga configurable |
 | **F4** | **Blueprint Editor completo + runtime**; pathfinding A*; IA construida sobre blueprints; **catálogo base de bloques** (puertas, patrulla, carga de combate, salto, antorcha, teletransporte); puertas/llaves/elevadores via bloques | F2, F3 | Enemigo con IA de blueprints persigue/ataca; puerta con llave; bloque predefinido arrastrado a una entidad |
@@ -384,6 +509,7 @@ raycastjs/
 │   │   ├── quests/  dialogue/  progression/  events/
 │   │   └── visualscript/     → runtime de blueprints
 │   ├── studio/
+│   │   ├── ui/                 → 6.22 Design System: componentes reutilizables (botones, inputs, tabs, tablas, modales, toasts, spinners, iconos, layout)
 │   │   ├── launcher/
 │   │   ├── game-library/     → 6.20 biblioteca de juegos (CRUD vía API)
 │   │   ├── asset-manager/
@@ -403,7 +529,7 @@ raycastjs/
 │   │   ├── auth/             → register/login JWT + bcrypt (casero)
 │   │   ├── routes/           → projects, assets, templates, gallery
 │   │   └── middleware/       → requireAuth, rate-limit, cors
-│   ├── db/                   → Drizzle schema + migraciones (Postgres)
+│   ├── db/                   → Prisma schema + migraciones (Postgres) + Prisma Client
 │   ├── storage/uploads/      → blobs (texturas/audio/fuentes)
 │   └── tests/                → tests de API (Vitest + app Hono)
 ├── docker-compose.yml        → postgres + api + web (dev/prod)
@@ -420,7 +546,7 @@ raycastjs/
 - **Energía por mantenimiento:** una prueba que falla = feature no cerrada.
 - **Cero duplicación retro/3d:** todo, salvo render, vive una vez.
 - **Assets bajo demanda:** el Publisher solo empaqueta lo usado.
-- **Reutilizar antes que crear:** Three.js, Vitest, Zod, Web Audio API, Hono, Drizzle, Postgres… (regla ponytail: no reinventar stdlib).
+- **Reutilizar antes que crear:** Three.js, Vitest, Zod, Web Audio API, Hono, Prisma, PostgreSQL… (regla ponytail: no reinventar stdlib).
 - **Servidor desacoplado por API REST:** el Studio habla solo con `/api/*`; cambiar de host/base de datos no toca el front (la SPA es estática y sirve desde cualquier lugar).
 - **Drag & drop como estándar de UX:** assets al viewport, bloques a entidades, nodos conectados con cables.
 - **Fidelidad retro en cada detalle:** tipografías DOS, pantallas de carga, ruido del píxel.
@@ -433,6 +559,7 @@ raycastjs/
 |---|---|
 | F0 Toolchain + migración retro | ✅ **Completada** (commit `221ffff`) |
 | F0.5 Backend + DB (Hono/Postgres) + Game Library + schema v2 | ✅ **Completada** (commit `111782f`) |
+| F0.7 Design System + componentes reutilizables | ⏳ Pendiente |
 | F1 Level Editor 3D + viewport + playtest | ⏳ Pendiente |
 | F2 Motor 3D + audio + física cinemática | ⏳ Pendiente |
 | F3 Pipeline sprites + Asset Manager + Fonts + Loading | ⏳ Pendiente |

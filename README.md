@@ -18,7 +18,7 @@ npm run preview   # sirve el build
 
 ## Qué incluye hoy (F0.5)
 
-- **Backend API** (Node + Hono + Drizzle) con Postgres: en dev usa **PGlite** embebido (Postgres en WASM, sin base de datos instalada) con `server/db/data/` persistente; en producción apunta a Postgres real vía `DATABASE_URL`.
+- **Backend API** (Node + Hono + **Prisma**) sobre **PostgreSQL**: schema en `server/db/schema.prisma`, migraciones con `prisma migrate`, y `DATABASE_URL=postgres://...` (ver `.env.example` y `docker-compose.yml`).
 - **Auth JWT casera** + bcrypt: registrarse, entrar y sesión (sin OAuth).
 - **Game Library (6.20)**: lista tus juegos, los crea desde plantillas (seed con el demo), importa/exporta `*.ragproj`, duplica, renombra, borra y los publica en la galería.
 - **Cloud Gallery (6.21)**: los juegos publicados son jugables online en `/play/:slug` con contador de visitas.
@@ -63,10 +63,10 @@ raycastjs/
 │   │   ├── auth.ts                 ← bcrypt + JWT (casero)
 │   │   └── env.ts                  ← PORT · JWT_SECRET · DATABASE_URL (carga .env)
 │   ├── db/
-│   │   ├── schema.ts               ← tablas Drizzle (users, projects JSONB, assets, templates, gallery)
-│   │   ├── client.ts               ← createDb(): PGlite (dev) o postgres.js (prod)
-│   │   └── ensure.ts               ← DDL idempotente + seed de plantillas (demo)
-│   └── tests/api.test.ts           ← integración de toda la API contra PGlite en memoria
+│   │   ├── schema.prisma          ← tablas Prisma (users, projects JSONB, assets, templates, gallery)
+│   │   ├── client.ts              ← PrismaClient singleton (envía a Postgres vía DATABASE_URL)
+│   │   └── ensure.ts              ← prisma db push / migrate + seed de plantillas (demo)
+│   └── tests/api.test.ts          ← integración de toda la API contra Postgres (test db)
 ├── tests/                          ← schemas, demo real y matemática del motor
 ├── tools/                          ← Sprite Slicer (adaptar en F3)
 ├── assets/                         ← sprites de Daggerfall (NO versionado)
@@ -90,6 +90,33 @@ raycastjs/
 ```
 
 Los defaults de estos campos viven en los schemas Zod: un `project.json` v1 se parsea y queda automáticamente en v2.
+
+## Contrato de comunicación API
+
+Todo `fetch` hacia `/api/*` devuelve el mismo envoltorio JSON (ver `ROADMAP.md` §5b):
+
+```jsonc
+// éxito
+{ "success": true, "data": { ... }, "error": null }
+// error
+{ "success": false, "data": null,
+  "error": { "code": "PROJECT_NOT_FOUND", "message": "El proyecto no existe", "details": { "id": "abc" } } }
+```
+
+- **Códigos de error centralizados** en `server/src/errors/codes.ts` (único lugar para añadir uno nuevo).
+- Los endpoints **lanzan** `AppError`; un **interceptor global** (`server/src/errors/handler.ts`, `app.onError`) unifica la respuesta de error. Nunca hay JSON suelto.
+- En el front, `apiFetch` desenvuelve el envoltorio y lanza `ApiError{ code, message, details }`; la UI lo muestra vía toast (ver `DESIGN.md` §5.6).
+
+## Esquema de datos
+
+El modelo de datos completo vive en [`DATABASE.md`](DATABASE.md) (fuente de verdad del esquema Postgres + Prisma). Resumen:
+
+- **persona · usuario · rol**: datos personales, credenciales de acceso y tipos de usuario (1:1 y N:1).
+- **proyecto**: el juego entero; `data` (JSONB) guarda el `project.json` v2 completo (mapa, texturas, sprites, entidades…), con `estado` (`EN_DESARROLLO`/`PUBLICADO`) y `propietario_id` → usuario.
+- **asset**: metadatos de cada archivo (ruta, mime, tamaño); los **bytes** van al filesystem de blobs.
+- **galeria · plantilla**: publicación pública `/play/:slug` y plantillas semilla.
+
+Regla: **toda la data del juego se persiste en la DB**; nunca en `localStorage`/memoria ni hardcodeada.
 
 ## Notas
 
