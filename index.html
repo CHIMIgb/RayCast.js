@@ -3,25 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RayCast Studio — Demo LodeV</title>
+    <title>RayCast Studio — Game Library</title>
   </head>
   <body>
     <div id="app">
       <header>
         <h1>RayCast Studio</h1>
-        <p class="tagline">Creador web de RPG 2.5D / 3D retro — Fase 0 (motor retro)</p>
+        <p class="tagline">Creador web de RPG 2.5D / 3D retro — Fase 0.5 (backend + Game Library)</p>
       </header>
-
-      <main>
-        <div class="viewport">
-          <canvas id="screen" width="640" height="480"></canvas>
-          <div id="fps">FPS: –</div>
-        </div>
-        <p id="status">Cargando proyecto…</p>
-      </main>
-
+      <main id="view"></main>
       <footer>
-        <p>Controles: <kbd>W</kbd>/<kbd>↑</kbd> avanzar · <kbd>S</kbd>/<kbd>↓</kbd> retroceder · <kbd>A</kbd>/<kbd>D</kbd> o <kbd>←</kbd>/<kbd>→</kbd> girar</p>
+        <p>Controles: <kbd>W</kbd>/<kbd>↑</kbd> avanzar · <kbd>S</kbd>/<kbd>↓</kbd> retroceder · <kbd>A</kbd>/<kbd>D</kbd> o <kbd>←</kbd>/<kbd>→</kbd> girar · <kbd>Esc</kbd> volver</p>
       </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>

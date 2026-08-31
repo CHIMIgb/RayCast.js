@@ -13,7 +13,7 @@ Convertir **RayCast.js** en una plataforma web tipo *RPG Maker* para construir v
 - **Runtime** — doble motor de render que ejecuta los juegos: modo **retro** (raycaster Canvas clásico) y modo **3d** (WebGL con verticalidad/eje Z, estilo XnGine/Daggerfall).
 - **Player/Publisher** — exporta un juego terminado a un **HTML autónomo** jugable en cualquier navegador, sin servidor ni instalación.
 
-**Un juego creado = una carpeta de proyecto** (`project.json` + `assets/`). Todo es datos: las herramientas escriben datos, los motores leen datos.
+**Un juego creado = una carpeta de proyecto** (`project.json` + `assets/`). Todo es datos: las herramientas escriben datos, los motores leen datos. Desde F0.5 esa carpeta vive **también** en el servidor (`/api/projects` + `/api/assets`): el Studio trabaja contra la API y exporta/importa `*.ragproj` para llevar el juego a otro lugar o respaldarlo.
 
 **Principio de UX rector:** todo en el Studio es **arrastrar y unir** — assets sobre el viewport, bloques predefinidos sobre entidades, y bloques entre sí con cables en los blueprints. El scripting por código queda excluido del alcance (decisión del usuario): la creación debe ser fácil, sin escribir una línea.
 
@@ -32,6 +32,8 @@ Convertir **RayCast.js** en una plataforma web tipo *RPG Maker* para construir v
 | **Visual Scripting (blueprints), nunca C#/C++** | La lógica del juego se diseña con grafos de nodos conectados por cables (estilo Unreal Blueprints). Un mismo runtime ejecuta IA, misiones, diálogos, eventos de mapa y cutscenes. |
 | **Sistemas RPG inspirados en Daggerfall Unity** | Proyecto open-source MIT con 10 años resolviendo exactamente estos sistemas (quests `QRC/QBN`, diálogos, facciones, clases). Es el blueprint de arquitectura, no código copiable. |
 | **Fidelidad de época** | Tipografías MS-DOS/rpg 90s y pantallas de carga son parte del producto, no decoración: definen la identidad visual retro. |
+| **Backend desde el inicio (API REST + Postgres)** | La biblioteca de juegos del creador y sus preferencias viven en servidor: multidispositivo, backup centralizado y galería pública. No contradice al Publisher: el HTML autónomo sigue siendo la exportación sin cuenta; la galería es una vía adicional de publicar/jugar. |
+| **Stack API: Node + Hono + Drizzle + Postgres** | Hono (liviano, TypeScript end-to-end, validación Zod nativa). Drizzle sobre `postgres.js` con `projects` como **JSONB** (documento v2 completo). Auth **JWT propios + bcrypt**, sesión stateless, sin proveedor OAuth por ahora. Blobs en filesystem del servidor (S3/R2 opcional en el futuro). |
 
 ---
 
@@ -49,22 +51,25 @@ Convertir **RayCast.js** en una plataforma web tipo *RPG Maker* para construir v
 ## 4. Arquitectura general
 
 ```
-┌─────────────────────────────── STUDIO (herramientas) ───────────────────────────────┐
-│ Launcher │ Asset Manager │ Level Editor │ Blueprint │ AI │ Quest │ Dialogue │ …     │
-│ Font Manager │ Loading Editor │ Publisher                                            │
-└──────────────┬──────────────────────────────────────────────────────────────────────┘
-               │  lee/escribe
-               ▼
-┌─────────────────────────── capa de datos (project.json + loaders) ──────────────────┐
-│ schemas (Zod) │ loaders │ migraciones │ indexedDB + export/import de proyecto       │
-└──────────────┬──────────────────────────────────────────────────────────────────────┘
-               ▼
-┌─────────────────────────────── RUNTIME (motores) ───────────────────────────────────┐
-│ Core: ECS, game loop, eventos, input, física cinemática, audio, save/load            │
-│ Render:  Retro (raycaster Canvas)   │   3D (Three.js + sector system + terrain)      │
-│ Systems: player, ai, combat, magic, inventory/trade, quests, dialogue, progression, │
-│          visualscript (blueprints)                                                   │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────── STUDIO (SPA Vite, herramientas) ───────────────────────────┐
+│ Game Library │ Launcher │ Asset Manager │ Level Editor │ Blueprint │ AI │ Quest │ …        │
+│ Dialogue │ Font Manager │ Loading Editor │ Publisher (HTML · galería)                      │
+└──────────────────────────────────────┬────────────────────────────────────────────────────┘
+                                       │  fetch → /api/* (REST; en dev el proxy del dev-server)
+┌──────────────────────────────────────▼──────────────────── API (Node + Hono) ─────────────┐
+│ /auth (JWT) │ /projects CRUD │ /assets (blobs) │ /templates (seed) │ /gallery (/play/:slug) │
+└──────────────────────────────────────┬──────────────────────────────┬──────────────────────┘
+                                       ▼                              ▼
+        ┌──────────────── Postgres ──────────────┐    ┌── almacén de blobs ──┐
+        │ users · projects (JSONB) · assets ·    │    │ filesystem del       │
+        │ gallery · templates (plantillas seed)  │    │ servidor (S3/R2 fut.)│
+        └────────────────────────────────────────┘    └──────────────────────┘
+
+RUNTIME (motores) — leen el mismo project.json v2 (local en el Studio o servido por /gallery)
+Core: ECS, game loop, eventos, input, física cinemática, audio, save/load
+Render:  Retro (raycaster Canvas)   │   3D (Three.js + sector system + terrain)
+Systems: player, ai, combat, magic, inventory/trade, quests, dialogue, progression,
+         visualscript (blueprints)
 ```
 
 **Principio rector:** nada duplicado entre motores salvo el render; todo lo demás vive una vez en Core/Systems y sirve a ambos.
@@ -110,6 +115,26 @@ Convertir **RayCast.js** en una plataforma web tipo *RPG Maker* para construir v
 
 Regla: **schema versionado + validadores (Zod)**. Una herramienta o motor que reciba un proyecto de versión distinta avisa y migra.
 
+### Schema v2 (aditivo, retrocompatible con v1)
+
+El de-hardcoding del motor pasa estas constantes a *datos del juego* (elimina índices y magia dura del código):
+
+- `settings.floorTexture` / `settings.ceilingTexture` → ids de textura (reemplazan los índices fijos 3/4/6 del raycaster).
+- `sprites[].flags { translucent?, kind? }` → reemplaza el `texture === 10` (luz) y la coloración por índice en el minimapa.
+- `settings.minimap { enabled?, colors { wall, player, sprite } }` → reemplaza los colores fijos del HUD.
+
+Migración automatizada v1→v2 (migrator Zod): un proyecto v1 se carga y se normaliza a v2 sin intervención.
+
+### Entidades del servidor (Postgres)
+
+| Tabla | Campos clave | Uso |
+|---|---|---|
+| `users` | id, email (único), password_hash, created_at | Cuentas y sesiones JWT |
+| `projects` | id, owner_id, name, schema_version, render_mode, data (**JSONB** con el documento v2), thumbnail, updated_at, published_at | Biblioteca de juegos del creador |
+| `assets` | id, project_id, path, hash, size, mime | Blobs; bytes en filesystem del servidor |
+| `gallery` | slug (único), project_id, description, visits | Galería pública `/play/:slug` |
+| `templates` | id, name, data (JSONB v2) | Plantillas semilla (incluye el demo) |
+
 ---
 
 ## 6. Catálogo de herramientas
@@ -135,8 +160,10 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 | 6.15 | Tipografías DOS / Font Manager | 🆕 | F3 |
 | 6.16 | Pantallas de carga / Loading Editor | 🆕 | F3 |
 | 6.17 | Bloques predefinidos reutilizables (catálogo) | 🆕 | F4 (catálogo base) · F11 (editor de bloques) |
-| 6.18 | Project Manager / Launcher | 🆕 | F0 |
+| 6.18 | Project Manager / Launcher | 🆕 | F0.5 |
 | 6.19 | Publisher (Player + pantalla de carga) | 🆕 | F12 |
+| 6.20 | **Game Library / DB Manager** 🆕 | 🆕 | F0.5 |
+| 6.21 | **Cloud Gallery (publicar online)** 🆕 | 🆕 | F12 |
 
 ### 6.1 Sprite Slicer + Background Remover — ✅ YA HECHO (adaptar)
 - **Objetivo:** cortar hojas de sprites (p.ej. Daedroth 718×1509px) en frames y eliminar fondo.
@@ -254,21 +281,33 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 
 ### 6.18 Project Manager / Launcher — 🆕
 - **Objetivo:** crear, abrir, duplicar, importar/exportar y configurar proyectos (renderMode, resolución, autor).
-- **Justificación:** organización de la unidad de trabajo.
-- **Flujo:** landing → nuevo proyecto (plantilla) → elegir modo (`retro`/`3d`) → proyecto de arranque con assets de ejemplo.
-- **Persistencia:** IndexedDB + export/import a `*.ragproj` (carpeta/zip) para compartir y commitear.
+- **Justificación:** organización de la unidad de trabajo; desde F0.5 la unidad vive en el servidor y es multidispositivo.
+- **Flujo:** landing → nuevo proyecto (plantilla del servidor) → elegir modo (`retro`/`3d`) → proyecto de arranque con assets de ejemplo → guardar en la API.
+- **Persistencia:** CRUD vía `/api/projects` + `/api/assets`; export/import a `*.ragproj` (zip) para backup, compartir y commitear.
 
 ### 6.19 Publisher — 🆕
-- **Objetivo:** exportar el juego a un HTML autónomo (bundle JS + assets usados + audio + fuentes + pantalla de carga).
-- **Justificación:** el "cierre" del creador.
-- **Flujo:** seleccionar proyecto → build optimizado (tree-shake del motor dual según `renderMode`) → descarga `mi-juego.html` → jugar/compartir.
+- **Objetivo:** exportar el juego a un HTML autónomo (bundle JS + assets usados + audio + fuentes + pantalla de carga) **y**, con cuenta, publicarlo en la galería.
+- **Justificación:** el "cierre" del creador; el HTML sigue funcionando sin cuenta ni servidor.
+- **Flujo:** seleccionar proyecto → build optimizado (tree-shake del motor dual según `renderMode`) → descarga `mi-juego.html` → jugar/compartir; o **Publicar en galería** → el juego queda jugable en `/play/:slug`.
+
+### 6.20 Game Library / DB Manager — 🆕
+- **Objetivo:** biblioteca personal de juegos del creador, servida por la API: listar, buscar, duplicar, respaldar y borrar proyectos de cualquier dispositivo con la misma cuenta.
+- **Justificación:** el multidispositivo es la razón del backend; sin una biblioteca gestionable, los proyectos quedarían dispersos.
+- **Flujo:** grid de proyectos (thumbnail, nombre, `renderMode`, fecha, tamaño) → filtro/búsqueda → crear/duplicar/renombrar → abrir en editor → **backup/restore `.ragproj`** → borrar con confirmación.
+- **I/O:** `/api/projects` (CRUD), `/api/assets` (blobs), thumbnail autogenerado por el runtime.
+
+### 6.21 Cloud Gallery — 🆕
+- **Objetivo:** publicar juegos en una galería pública con URL jugable (`/play/:slug`), portada y estadísticas.
+- **Justificación:** el backend habilita que los juegos se *jueguen online* sin que el autor tenga servidor propio; convive con el HTML autónomo.
+- **Flujo:** Publish → "Publicar en galería" (slug, descripción, portada) → vista pública jugable (mismo runtime que el editor) → contador de visitas → despublícar cuando se quiera.
+- **I/O:** `gallery` (slug, description, visits) + el `project.json` v2 de la fila de `projects`. Reutiliza el build optimizado de 6.19.
 
 ---
 
 ## 7. Flujo end-to-end del creador
 
 ```
-1. Launcher: nuevo proyecto (elijo "3d", plantilla)
+1. Game Library: login → nuevo proyecto desde plantilla (elijo "3d")
 2. Asset Manager: arrastro texturas + sprites Daggerfall
 3. Sprite pipeline: slicer → animator → entity builder
 4. Level Editor: pinto muros, doy altura al piso, hago una rampa, coloco la cámara
@@ -277,7 +316,7 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 7. Dialogue/Quest/Items: NPC con tienda y una misión de entrega
 8. Font Manager: tipografía DOS para el HUD
 9. Loading Editor: pantalla de carga con el logo
-10. Publisher → HTML jugable con su pantalla de carga
+10. Publisher → HTML jugable con su pantalla de carga, o Publicar en galería (/play/:slug)
 ```
 
 ---
@@ -287,7 +326,8 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 | Fase | Entregable | Depende de | Criterio de aceptación |
 |------|-----------|-----------|------------------------|
 | **F0** | Toolchain Vite+TS+Vitest; migrar raycaster a `src/render/retro/`; mapa a `project.json`; tests base; Launcher mínimo | — | `npm run dev` corre el mismo mundo retro en TS; `vitest` verde |
-| **F1** | **Level Editor + viewport 3D + playtest** | F0 | Pinto un mapa con rampas/pisos, lo camino en 3D y guardo/cargo |
+| **F0.5** | **Backend + base de datos**: API Hono+Postgres (auth JWT, CRUD de `/api/projects` y `/api/assets`, `/api/templates` seed, `/api/gallery`); **Game Library 6.20**; migración a **schema v2** + de-hardcoding del motor (piso/techo, flags de sprite, minimapa) | F0 | `npm run dev` levanta SPA+API; la biblioteca lista/crea/guarda proyectos por API; el mundo retro lee `project.json` v2; migración v1→v2 automática |
+| **F1** | **Level Editor + viewport 3D + playtest** | F0.5 | Pinto un mapa con rampas/pisos, lo camino en 3D y guardo/cargo (por API) |
 | **F2** | Motor 3D jugable: sector system, colisión por altura, gravedad/saltos (física cinemática), sprites billboard, minimapa 3D, **módulo de audio** (Web Audio espacial) | F1 | Rampa, escaleras y piso superior en vivo; sprites bien ocluidos; sonido espacial |
 | **F3** | Adaptar sprite pipeline heredado; Asset Manager (texturas/sprites/audio/fuentes); **Font Manager DOS** + convertidor TTF→bitmap; **pantallas de carga** | F0 | Daedroth animado en el editor; HUD con tipo DOS; pantalla de carga configurable |
 | **F4** | **Blueprint Editor completo + runtime**; pathfinding A*; IA construida sobre blueprints; **catálogo base de bloques** (puertas, patrulla, carga de combate, salto, antorcha, teletransporte); puertas/llaves/elevadores via bloques | F2, F3 | Enemigo con IA de blueprints persigue/ataca; puerta con llave; bloque predefinido arrastrado a una entidad |
@@ -298,7 +338,7 @@ Para cada una: **objetivo · justificación · flujo de uso · entradas/salidas 
 | **F9** | Comercio (tiendas, moneda, restock, NPC vendedor) | F5 | Compra/venta en tienda con moneda y restock |
 | **F10** | Progresión (clases, atributos, XP, skills, subida de nivel) | F6, F8 | Subir de nivel, puntos de skill, curva XP |
 | **F11** | Editor de **catálogo de bloques propios** (publicar bloques reutilizables); cutscenes/eventos avanzados | F4 | Creador agrupa nodos como bloque y lo reutiliza en otro mapa |
-| **F12** | **Publisher**: HTML autónomo con pantalla de carga y solo lo usado (tipos, audio, fuentes, blueprints) | todas | HTML exportado juega igual que el dev |
+| **F12** | **Publisher**: HTML autónomo con pantalla de carga y solo lo usado (tipos, audio, fuentes, blueprints) + **publicación en la galería** (`/play/:slug`) | todas | HTML exportado juega igual que el dev; y un proyecto publicado en la galería es jugable online |
 
 Verificación continua: `vitest run` + demo jugable; cada fase cierra con una demo en `localhost:8080`.
 
@@ -335,7 +375,7 @@ raycastjs/
 │   └── fonts/                → fuentes DOS empotradas (Px437, VT323, Press Start 2P)
 ├── src/
 │   ├── core/                 → ECS, loop, eventos, input, física cinemática, audio, save/load
-│   ├── data/                 → schemas (Zod), loaders, migraciones, blocks/
+│   ├── data/                 → schemas (Zod), loaders, migraciones, db-client (API), blocks/
 │   ├── render/
 │   │   ├── retro/            → raycaster TS (heredado, migrado)
 │   │   └── render3d/         → Three.js + sector system + terrain
@@ -345,6 +385,7 @@ raycastjs/
 │   │   └── visualscript/     → runtime de blueprints
 │   ├── studio/
 │   │   ├── launcher/
+│   │   ├── game-library/     → 6.20 biblioteca de juegos (CRUD vía API)
 │   │   ├── asset-manager/
 │   │   ├── sprite-tools/     → slicer (adaptado) + animator + entity builder
 │   │   ├── level-editor/     → vista 2D + viewport 3D + playtest
@@ -354,10 +395,21 @@ raycastjs/
 │   │   ├── progression-editor/  events/  blocks-catalog/
 │   │   ├── font-manager/     → tipografías DOS + convertidor TTF→bitmap
 │   │   ├── loading-editor/
-│   │   └── publisher/
+│   │   └── publisher/        → 6.19 HTML autónomo + 6.21 publicación en galería
 │   └── player/               → runtime standalone exportable
+├── server/
+│   ├── src/
+│   │   ├── index.ts          → app Hono (rutas /api/*)
+│   │   ├── auth/             → register/login JWT + bcrypt (casero)
+│   │   ├── routes/           → projects, assets, templates, gallery
+│   │   └── middleware/       → requireAuth, rate-limit, cors
+│   ├── db/                   → Drizzle schema + migraciones (Postgres)
+│   ├── storage/uploads/      → blobs (texturas/audio/fuentes)
+│   └── tests/                → tests de API (Vitest + app Hono)
+├── docker-compose.yml        → postgres + api + web (dev/prod)
+├── .env.example              → DATABASE_URL · JWT_SECRET · PORT · PUBLIC_URL
 ├── tools/                    → paso intermedio: se migra a src/studio/sprite-tools/
-├── tests/                    → unit + integración (Vitest)
+├── tests/                    → unit + integración (Vitest, front)
 └── ROADMAP.md
 ```
 
@@ -368,7 +420,8 @@ raycastjs/
 - **Energía por mantenimiento:** una prueba que falla = feature no cerrada.
 - **Cero duplicación retro/3d:** todo, salvo render, vive una vez.
 - **Assets bajo demanda:** el Publisher solo empaqueta lo usado.
-- **Reutilizar antes que crear:** Three.js, Vitest, Zod, Web Audio API, IndexedDB… (regla ponytail: no reinventar stdlib).
+- **Reutilizar antes que crear:** Three.js, Vitest, Zod, Web Audio API, Hono, Drizzle, Postgres… (regla ponytail: no reinventar stdlib).
+- **Servidor desacoplado por API REST:** el Studio habla solo con `/api/*`; cambiar de host/base de datos no toca el front (la SPA es estática y sirve desde cualquier lugar).
 - **Drag & drop como estándar de UX:** assets al viewport, bloques a entidades, nodos conectados con cables.
 - **Fidelidad retro en cada detalle:** tipografías DOS, pantallas de carga, ruido del píxel.
 
@@ -378,7 +431,8 @@ raycastjs/
 
 | Fase | Estado |
 |---|---|
-| F0 Toolchain + migración retro | ⏳ Pendiente |
+| F0 Toolchain + migración retro | ✅ **Completada** (commit `221ffff`) |
+| F0.5 Backend + DB (Hono/Postgres) + Game Library + schema v2 | ⏳ Pendiente |
 | F1 Level Editor 3D + viewport + playtest | ⏳ Pendiente |
 | F2 Motor 3D + audio + física cinemática | ⏳ Pendiente |
 | F3 Pipeline sprites + Asset Manager + Fonts + Loading | ⏳ Pendiente |

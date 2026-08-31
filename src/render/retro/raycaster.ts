@@ -32,6 +32,10 @@ export class RetroGame {
   private readonly mapHeight: number;
 
   private textures: LoadedTexture[] = [];
+  private textureIndexById = new Map<string, number>();
+  private floorTexIdx = 0;
+  private floorTexAltIdx = 0;
+  private ceilingTexIdx = 0;
   private readonly floorImgData: ImageData;
   private readonly buf: Uint8ClampedArray;
   private readonly zBuffer: Float64Array;
@@ -83,6 +87,12 @@ export class RetroGame {
   async start(): Promise<void> {
     if (this.running) return;
     this.textures = await loadTextures(this.project.textures);
+    this.textureIndexById = new Map(this.project.textures.map((t, i) => [t.id, i]));
+    // v2: piso/techo por id de textura (declarado en project.json), no índices fijos.
+    const { floorTexture, floorTextureAlt, ceilingTexture } = this.project.settings;
+    this.floorTexIdx = this.textureIndexById.get(floorTexture) ?? 0;
+    this.floorTexAltIdx = this.textureIndexById.get(floorTextureAlt) ?? 0;
+    this.ceilingTexIdx = this.textureIndexById.get(ceilingTexture) ?? 0;
     this.running = true;
     this.keyboard.attach();
     this.rafId = requestAnimationFrame((timestamp) => {
@@ -267,8 +277,8 @@ export class RetroGame {
         const floorTexY = Math.floor((currentFloorY * texObj.height) / 4) & (texObj.height - 1);
 
         const checkerBoardPattern = (Math.floor(currentFloorX) + Math.floor(currentFloorY)) & 1;
-        const floorTexIdx = checkerBoardPattern === 0 ? 3 : 4; // greystone / bluestone
-        const ceilingTexIdx = 6; // wood
+        const floorTexIdx = checkerBoardPattern === 0 ? this.floorTexIdx : this.floorTexAltIdx;
+        const ceilingTexIdx = this.ceilingTexIdx;
 
         const fData = this.textures[floorTexIdx].data;
         const cData = this.textures[ceilingTexIdx].data;
@@ -350,7 +360,7 @@ export class RetroGame {
       const texObj = this.textures[sprite.texture];
       if (!texObj) continue;
 
-      const isTranslucent = sprite.texture === 10; // luz verde
+      const isTranslucent = sprite.flags.translucent; // v2: luz = translúcida
       if (isTranslucent) ctx.globalAlpha = 0.5;
 
       for (let stripe = clipStartX; stripe <= clipEndX; stripe++) {
@@ -416,8 +426,12 @@ export class RetroGame {
   }
 
   private drawMinimap(): void {
+    const minimap = this.project.settings.minimap;
+    if (!minimap.enabled) return;
+
     const ctx = this.ctx;
-    const cellSize = 6;
+    const cellSize = minimap.cellSize;
+    const colors = minimap.colors;
     const mapWidthPx = this.mapWidth * cellSize;
     const mapHeightPx = this.mapHeight * cellSize;
     const offsetX = this.screenWidth - mapWidthPx - 10;
@@ -431,7 +445,7 @@ export class RetroGame {
     for (let x = 0; x < this.mapWidth; x++) {
       for (let y = 0; y < this.mapHeight; y++) {
         if (this.grid[x] && this.grid[x][y] > 0) {
-          ctx.fillStyle = '#888888';
+          ctx.fillStyle = colors.wall;
           ctx.fillRect(offsetX + x * cellSize, offsetY + y * cellSize, cellSize, cellSize);
         }
       }
@@ -439,9 +453,13 @@ export class RetroGame {
 
     for (let i = 0; i < this.project.sprites.length; i++) {
       const sprite = this.project.sprites[i];
-      if (sprite.texture === 10) ctx.fillStyle = '#00FF00';
-      else if (sprite.texture === 8) ctx.fillStyle = '#8B4513';
-      else ctx.fillStyle = '#0000FF';
+      // v2: color por kind (declarado en project.json), con fallback genérico
+      let dotColor = colors.sprite;
+      if (sprite.flags.kind) {
+        const byKind = colors.byKind.find((k) => k.kind === sprite.flags.kind);
+        if (byKind) dotColor = byKind.color;
+      }
+      ctx.fillStyle = dotColor;
       ctx.fillRect(
         offsetX + sprite.x * cellSize - 1,
         offsetY + sprite.y * cellSize - 1,
@@ -450,14 +468,14 @@ export class RetroGame {
       );
     }
 
-    ctx.fillStyle = '#FF0000';
+    ctx.fillStyle = colors.player;
     const playerPxX = offsetX + this.posX * cellSize;
     const playerPxY = offsetY + this.posY * cellSize;
     ctx.beginPath();
     ctx.arc(playerPxX, playerPxY, 3, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = '#FFFF00';
+    ctx.strokeStyle = colors.direction;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(playerPxX, playerPxY);

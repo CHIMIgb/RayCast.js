@@ -6,3 +6,6 @@ dist/
 .env
 # Recursos propietarios de terceros (importar localmente bajo demanda, no versionar)
 assets/
+# Datos del servidor (DB PGlite embebida y blobs subidos)
+server/db/data/
+server/data/

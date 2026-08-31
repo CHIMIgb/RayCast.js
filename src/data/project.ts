@@ -1,9 +1,11 @@
 import { Project, ProjectSchema, ProjectValidationError } from './schema';
 
+export { ProjectValidationError } from './schema';
+
 /**
  * Carga un proyecto desde una URL (JSON) y lo valida contra el schema.
  * - F0: consume `public/projects/demo/project.json`.
- * - Más adelante: cargará desde IndexedDB o desde un archivo importado.
+ * - Más adelante: cargará desde la API (`/api/projects`, F0.5) o de un archivo importado.
  *
  * @param url  URL absoluta o relativa del project.json.
  */
