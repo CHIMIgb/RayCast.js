@@ -6,6 +6,9 @@ dist/
 .env
 # Recursos propietarios de terceros (importar localmente bajo demanda, no versionar)
 assets/
-# Datos del servidor (DB PGlite embebida y blobs subidos)
-server/db/data/
+# Datos del servidor (blobs subidos y artefactos generados por Prisma)
+server/system/
 server/data/
+server/node_modules/.prisma/
+server/node_modules/@prisma/
+*.db
